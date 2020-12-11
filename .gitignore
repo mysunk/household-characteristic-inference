@@ -1,0 +1,5 @@
+etc/
+data/
+results
+.idea
+__pycache__
