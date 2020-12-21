@@ -7,11 +7,11 @@ font = {'size': 14}
 matplotlib.rc('font', **font)
 
 #%% load dataset
-power_df = pd.read_csv('data/power_comb.csv')
+power_df = pd.read_csv('../data/power_comb.csv')
 # 0 to NaN
 power_df[power_df==0] = np.nan
 # power_df = power_df.iloc[:2*24*28,:] # 4주
-info = load_info(path='data/survey_for_number_of_residents.csv')
+info = load_info(path='../data/survey_for_number_of_residents.csv')
 datetime = power_df['time']
 power_df.set_index('time', inplace=True)
 # info[info>=7] = 7
@@ -61,7 +61,7 @@ MI_result = np.array(MI_result)
 corr_result = np.array(corr_result)
 
 #%%
-result_df = pd.read_csv('results/result_1.csv')
+result_df = pd.read_csv('../results/result_1.csv')
 result_df.set_index('Unnamed: 0', inplace = True)
 
 MI_result = result_df.loc['MI',:].values
@@ -85,7 +85,7 @@ for i, start in enumerate(range(0, window*(days-1),window)):
     MI_result[i] = MI_
 
 #%% plot corr and mi
-result_df = pd.read_csv('results/result_1.csv')
+result_df = pd.read_csv('../results/result_1.csv')
 result_df.set_index('Unnamed: 0', inplace = True)
 
 MI_result = result_df.loc['MI',:].values
@@ -202,3 +202,5 @@ for i, upper_th in enumerate(search_space):
     results[i, :] = calc_MI_corr(data, label)
 
 print(results[np.argmax(results[:,1]),:])
+
+#%%
