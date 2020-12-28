@@ -63,22 +63,3 @@ plt.ylabel('Energy consumption [kWh]')
 plt.ylim(0, 3)
 plt.show()
 
-#%% 집 하나에 대해서
-power_dict = dict(keys=power_df.columns)
-
-# NaN이 하나라도 있으면 drop
-power_rs = np.reshape(power_df.values.T, (power_df.shape[1], -1, 48))
-non_nan_idx = np.all(~pd.isnull(power_rs), axis= 2)
-
-a = []
-for i, key in enumerate(power_dict.keys()):
-    power_dict[key] = power_rs[i,non_nan_idx[i],:]
-    a.append(np.median(np.mean(power_rs[i, non_nan_idx[i], :], axis=0)))
-
-
-#%%
-plt.title('Number of valid days')
-plt.xlabel('Index of house')
-plt.ylabel('days')
-plt.plot(non_nan_idx.sum(axis=1))
-plt.show()
