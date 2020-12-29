@@ -18,14 +18,15 @@ for j in range(survey_raw.shape[1]):
 survey = pd.DataFrame(index = survey_raw.index)
 
 #%% Queistion 확인
-Qnum = '410'
-np.where(np.array([Qnum in col for col in survey_raw.columns]))
-survey_raw.columns[8]
+Qnum = '4312'
+idx = np.where(np.array([Qnum in col for col in survey_raw.columns]))[0]
+print(survey_raw.columns[idx])
+
 
 #%% Questions 1
 """
 Young (1): age <= 35
-Ned (2): 35 < age <= 65
+Med (2): 35 < age <= 65
 High (3): 65 < age
 """
 Q300 = 'Question 300: May I ask what age you were on your last birthday? INT: IF NECCESSARY, PROMPT WITH AGE BANDS'
@@ -40,14 +41,17 @@ survey.loc[idx, 'Q1'] = 1
 
 #%% Questions 2
 """
-retired: 1
-not: 0
+employed: 1
+retired: 0
 """
 Q310 = 'Question 310: What is the employment status of the chief income earner in your household, is he/she'
-survey['Q2'] = 0
+survey['Q2'] = 1
 
-idx = survey_raw[Q310] == 6
-survey.loc[idx, 'Q2'] = 1
+idx = (survey_raw[Q310] == 4).values + \
+        (survey_raw[Q310] == 5).values + \
+        (survey_raw[Q310] == 6).values + \
+        (survey_raw[Q310] == 7).values
+survey.loc[idx, 'Q2'] = 0
 
 #%% Questions 13, 3, 8, 9
 """ 13
@@ -69,13 +73,10 @@ Q410 = 'Question 410: What best describes the people you live with? READ OUT'
 Q420 = 'Question 420: How many people over 15 years of age live in your home?'
 Q43111 = 'Question 43111: How many people under 15 years of age live in your home?'
 
-# initialize
-survey['Q13'] = -1
-survey['Q3'] = -1
-survey['Q8'] = 0
-survey['Q9'] = 0
 
 # 세대원 수가 1명인 경우
+survey['Q13'] = -1
+survey['Q3'] = -1
 survey.loc[survey_raw[Q410] == 1, 'Q13'] = 1
 survey.loc[survey_raw[Q410] == 1, 'Q3'] = 0
 
@@ -88,38 +89,45 @@ survey.loc[survey_raw[Q410] == 3, 'Q13'] = survey_raw.loc[survey_raw[Q410] == 3,
 survey.loc[survey_raw[Q410] == 3, 'Q3'] = survey_raw.loc[survey_raw[Q410] == 3, Q43111]
 
 # children을 binary로
-survey.loc[survey['Q3'] >= 1,'Q3'] = 1
+survey.loc[survey['Q3'] >= 1, 'Q3'] = 1
 
 # is single?
+survey['Q8'] = 0
 idx = (survey['Q3'] == 0).values * (survey['Q13'] == 1).values
 survey.loc[idx, 'Q8'] = 1
 
 # is family?
-idx = (survey['Q3'] >0 ).values * (survey['Q13'] > 1).values
+survey['Q9'] = 0
+num_adults = survey_raw[Q420] # except single
+idx = (survey['Q3'] > 0).values * (num_adults > 1).values
 survey.loc[idx, 'Q9'] = 1
 
 # #residents를 3 class로
-survey.loc[survey['Q13'] <= 2,'Q13'] = 1
-survey.loc[survey['Q13'] > 2,'Q13'] = 2
+survey.loc[survey['Q13'] <= 2, 'Q13'] = 1
+survey.loc[survey['Q13'] > 2, 'Q13'] = 2
 
 #%% Question 4
 """
 age of building
-old (>30)
-new (<=30)
+new (<=30): 1
+old (>30) : 2
 """
 Q4531 = 'Question 4531: Approximately how old is your home?'
 Q453 = 'Question 453: What year was your house built INT ENTER FOR EXAMPLE: 1981- CAPTURE THE FOUR DIGITS'
 survey['Q4'] = -1
-idx = (survey_raw[Q453] >= 1500) * (survey_raw[Q453] <= 2010)
+idx = (survey_raw[Q453] >= 1000) * (survey_raw[Q453] <= 2010)
 survey.loc[idx, 'Q4'] = 2009 - survey_raw.loc[idx, Q453]
+# 4, 5는 label 2 // 1,2,3은 label 1
 idx = (survey_raw[Q4531] != -1)
-survey.loc[idx, 'Q4'] = survey_raw.loc[idx, Q4531]
+old_idx = (survey_raw.loc[idx, Q4531] >= 4).index[(survey_raw.loc[idx, Q4531] >= 4).values]
+new_idx = (survey_raw.loc[idx, Q4531] <= 3).index[(survey_raw.loc[idx, Q4531] <= 3).values]
+survey.loc[old_idx, 'Q4'] = 50
+survey.loc[new_idx, 'Q4'] = 20
 
-idx = survey['Q4'] > 30
+idx = survey['Q4'] >= 30
 bad_idx = survey['Q4'] == -1
-survey.loc[idx,'Q4'] = 1
-survey.loc[~idx,'Q4'] = 0
+survey.loc[idx,'Q4'] = 2
+survey.loc[~idx,'Q4'] = 1
 survey.loc[bad_idx,'Q4'] = -1
 
 #%% Question 5
@@ -133,24 +141,24 @@ big: 3
 Q6103 = 'Question 6103: What is the approximate floor area of your home?'
 Q61031 = 'Question 61031: Is that'
 
-survey['Q5'] = survey_raw.copy()
+survey['Q5'] = survey_raw[Q6103].copy()
 
-# bad data
 bad_idx = survey_raw[Q6103] == 999999999
-survey.loc[bad_idx, 'Q5'] = -1
 
 idx = survey_raw[Q61031] == 2
-survey.loc[idx, 'Q5'] /= 0.092903
+survey.loc[idx, 'Q5'] = survey.loc[idx, 'Q5'].values.copy() / 10.764
 
-idx = survey_raw[Q6103] <= 100
-idx3 = survey_raw[Q6103] > 200
-idx2 = (survey_raw[Q6103] > 100).values * (survey_raw[Q6103] <= 200).values
+idx = (survey['Q5'] <= 100).values
+idx3 = (survey['Q5'] > 200).values * (survey['Q5'] < 999999999).values
+idx2 = (survey['Q5'] > 100).values * (survey['Q5'] <= 200).values
 
 survey.loc[idx,'Q5'] = 1
 survey.loc[idx2,'Q5'] = 2
 survey.loc[idx3,'Q5'] = 3
 survey.loc[bad_idx,'Q5'] = -1
 survey['Q5'] = survey['Q5'].astype(int)
+
+np.unique(survey['Q5'], return_counts=True)
 
 #%% Question 6
 """
@@ -233,10 +241,48 @@ low (<=8)
 med (8< <=11)
 high (>11)
 """
+Q49002 = ['Question 49002: Washing machine',
+'Question 49002: Tumble dryer',
+'Question 49002: Dishwasher',
+'Question 49002: Electric shower (instant)',
+'Question 49002: Electric shower (electric pumped from hot tank)',
+'Question 49002: Electric cooker',
+'Question 49002: Electric heater (plug-in convector heaters)',
+'Question 49002: Stand alone freezer',
+'Question 49002: A water pump or electric well pump or pressurised water system',
+'Question 49002: Immersion']
+Q490002=[
+'Question 490002: TV’s less than 21 inch',
+'Question 490002: TV’s greater than 21 inch',
+'Question 490002: Desk-top computers',
+'Question 490002: Lap-top computers',
+'Question 490002: Games consoles, such as xbox, playstation or Wii']
 
-for idx in np.where(np.array([Qnum in col for col in survey_raw.columns]))[0]:
-    print(idx)
-    print(survey_raw.columns[idx])
+survey['Q12'] = 0
+for Question in Q49002:
+    val = survey_raw.loc[:,Question].values.copy()
+    val[val<=1] = 0
+    val[val == 2] = 1
+    val[val == 3] = 2
+    val[val == 4] = 3
+    survey['Q12'] += val
+
+for Question in Q490002:
+    val = survey_raw.loc[:,Question].values.copy()
+    val[val<=1] = 0
+    val[val == 2] = 1
+    val[val == 3] = 2
+    val[val == 4] = 3
+    val[val == 5] = 4
+    survey['Q12'] += val
+
+idx = survey['Q12'] <= 8
+idx2 = (survey['Q12'] > 8) * (survey['Q12'] <= 11)
+idx3 = survey['Q12'] > 11
+
+survey.loc[idx, 'Q12'] = 1
+survey.loc[idx2, 'Q12'] = 2
+survey.loc[idx3, 'Q12'] = 3
 
 #%% Questions 14
 """
@@ -261,5 +307,10 @@ survey.loc[idx, 'Q14'] = 3
 others: 0
 """
 Q430 = 'Question 430: And how many of these are typically in the house during the day (for example for 5-6 hours during the day)'
+Q4312 = 'Question 4312: And how many of these are typically in the house during the day (for exanmple for 5-6 hours during the day)'
+
 survey['Q15'] = 0
-survey.loc[survey_raw[Q430] == 8,'Q15'] = 1
+idx_1 = survey_raw[Q430] == 8
+idx_2 = survey_raw[Q4312] == 8
+survey.loc[idx_1, 'Q15'] = 1
+survey.loc[idx_2, 'Q15'] = 1
