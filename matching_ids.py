@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
+from util import *
 font = {'size': 16, 'family':"NanumGothic"}
 matplotlib.rc('font', **font)
 
@@ -306,42 +307,206 @@ def matching_ids(QID):
     for id in label_raw.index:
         id = str(id)
         if id in power_dict.keys():
-            # data_tmp = feature_extraction(power_dict[id][0], power_dict[id][1], power_dict[id][2])
+            # data_tmp1 = feature_extraction(power_dict[id][0], power_dict[id][1], power_dict[id][2])
             # 24시간 프로파일
             data_tmp = np.mean(power_dict[id][0], axis=0).reshape(1,-1)
+            # data_tmp = np.concatenate([data_tmp2, data_tmp1], axis=1)
             data.append(data_tmp)
             label.append(label_raw.loc[id])
     data = np.concatenate(data, axis=0)
     label = np.array(label)
     return data, label
 
+def matching_ids_with_aug(QID):
+    # make label corresponding QID
+    label_raw = survey[QID]
+    label_raw = label_raw[label_raw != -1]
+
+    data = []
+    label = []
+    for id in label_raw.index:
+        id = str(id)
+        if id in power_dict.keys():
+            # 24시간 프로파일
+            non_nan_idx = np.all(~pd.isnull(power_dict[id][0]), axis= 1)
+            data_tmp = power_dict[id][0][non_nan_idx,:]
+            data_tmp = data_tmp[:14,:] # 14일만 가져옴
+            data.append(data_tmp)
+            label.append(np.repeat(label_raw.loc[id], 14))
+    data = np.concatenate(data, axis=0)
+    label = np.ravel(np.array(label))
+    return data, label
+
 #%% 데이터 저장
-data_dict, label_dict = dict(), dict()
+data_dict, label_dict, data_ref_dict, label_ref_dict = dict(), dict(), dict(), dict()
 for i in range(1,16):
-    data, label = matching_ids('Q'+str(i))
+    data_ref, label_ref = matching_ids('Q'+str(i))
+    data, label = matching_ids_with_aug('Q' + str(i))
+
     data_dict['Q'+str(i)] = data
     label_dict['Q'+str(i)] = label
 
-#%% 간단한 rf 모델
+    label_ref_dict['Q' + str(i)] = label_ref
+    data_ref_dict['Q' + str(i)] = data_ref
+
+#%% 분석
+NUM_FEATURES = data.shape[1]
+mi_result = np.zeros((NUM_FEATURES, 15))
+corr_result = np.zeros((NUM_FEATURES, 15))
+for i in range(1,16):
+    data, label = data_dict['Q'+str(i)], label_dict['Q'+str(i)]
+    for j in range(NUM_FEATURES):
+        result = calc_MI_corr(data[:,j], label, is_categorical=True)
+        mi_result[j,i-1] =result[0]
+        corr_result[j,i-1] = result[1]
+
+plt.figure()
+plt.subplot(2,1,1)
+plt.title('Question 1 - 15')
+plt.xticks(list(range(48)[::4])
+           , list(np.arange(0,24,0.5)[::4].astype(int)))
+plt.ylabel('MI')
+plt.plot(mi_result)
+
+plt.subplot(2,1,2)
+plt.xticks(list(range(48)[::4])
+           , list(np.arange(0,24,0.5)[::4].astype(int)))
+plt.plot(corr_result)
+plt.ylabel('Correlation')
+plt.xlabel('Hour')
+plt.show()
+
+#%%
+plt.figure(figsize=(9,3))
+idx = np.argsort(corr_result.max(axis=0))[::-1]
+plt.bar(range(15), corr_result.max(axis=0)[idx])
+plt.xticks(range(15), ['Q'+ str(i+1) for i in idx])
+plt.ylabel('Corr')
+plt.title('Maximum Corr for each questions')
+plt.show()
+
+#%% 분석 2
+NUM_FEATURES = data.shape[1]
+mi_result = np.zeros((NUM_FEATURES, 15))
+corr_result = np.zeros((NUM_FEATURES, 15))
+for i in range(1,16):
+    i = 13
+    data, label = data_dict['Q'+str(i)], label_dict['Q'+str(i)]
+    for j in range(NUM_FEATURES):
+        result = calc_MI_corr(data[:,j], label, is_categorical=True)
+        mi_result[j,i-1] =result[0]
+        corr_result[j,i-1] = result[1]
+
+    fig, ax1 = plt.subplots(figsize=(6, 3))
+    plt.title(f'Question {i}')
+    # plt.title('Correlation and MI')
+    # ax1.set_xlabel('date')
+    ax1.plot(mi_result[:,i-1], color='tab:blue')
+    ax1.set_ylabel('MI', color='tab:blue')
+    ax1.tick_params(axis='y', labelcolor='tab:blue', )
+    ax2 = ax1.twinx()
+    ax2.plot(corr_result[:,i-1], color='tab:orange')
+    ax2.set_ylabel('Correlation', color='tab:orange')
+    ax2.tick_params(axis='y', labelcolor='tab:orange')
+    # fig.tight_layout()
+    ax1.set_xlabel('Feature index', color='k')
+    plt.show()
+    break
+
+#%%
+idx = np.argsort(corr_result[:,i-1])
+idx = idx[::-1]
+np.array([56,  66,  49,  48,  51]) - 48 + 1
+
+plt.figure(figsize=(6,3))
+# features = ['c_evening_mean','c_evening_max','c_weekday_mean','c_total_mean','c_afternoon_mean']
+features = ['c_evening_mean','c_evening_max','c_weekday_mean','c_total_mean','c_day_mean']
+plt.bar(range(5),corr_result[:,i-1][idx[:5]])
+plt.xticks(range(5), features, rotation=30)
+
+plt.ylabel('Correlation')
+plt.title('Corr for each top 5 features')
+plt.show()
+
+fig, ax1 = plt.subplots(figsize=(6, 3))
+# plt.title('Correlation and MI')
+# ax1.set_xlabel('date')
+ax1.plot(mi_result[:,i-1], color='tab:blue')
+ax1.set_ylabel('MI', color='tab:blue')
+ax1.tick_params(axis='y', labelcolor='tab:blue', )
+ax2 = ax1.twinx()
+ax2.plot(corr_result[:,i-1], color='tab:orange')
+ax2.set_ylabel('Correlation', color='tab:orange')
+ax2.tick_params(axis='y', labelcolor='tab:orange')
+# fig.tight_layout()
+ax1.set_xlabel('Feature index', color='k')
+plt.show()
+
+
+#%% uniform guess
+result_bg = []
+for i in range(1,16):
+    q = 'Q' + str(i)
+    print('{:.2f}'.format(np.unique(survey[q],return_counts=True)[1].max() / np.unique(survey[q],return_counts=True)[1].sum()*100))
+    result_bg.append(np.unique(survey[q],return_counts=True)[1].max() / np.unique(survey[q],return_counts=True)[1].sum()*100)
+
+#%% w/o augmented: RF
 from sklearn.model_selection import StratifiedKFold
 from sklearn.ensemble import RandomForestClassifier
 from tqdm import tqdm
-for i in range(1,16):
-    data, label = data_dict['Q'+str(i)], label_dict['Q'+str(i)]
 
+result = []
+for i in tqdm(range(1,16)):
+    data, label = data_ref_dict['Q'+str(i)], label_ref_dict['Q'+str(i)]
     y_pred = np.zeros(label.shape)
     y_true = np.zeros(label.shape)
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
-    for train_index, test_index in tqdm(skf.split(data, label)):
+    for train_index, test_index in skf.split(data, label):
+
         X_train, X_test = data[train_index], data[test_index]
         y_train, y_test = label[train_index], label[test_index]
-        model = RandomForestClassifier(n_estimators=100, random_state=0, max_features=5)
+        model = RandomForestClassifier(n_estimators=100, random_state=0, max_features=5, verbose=True,
+                                       n_jobs=-1)
         model.fit(X_train, y_train)
         y_pred[test_index] = model.predict(X_test)
         y_true[test_index] = y_test
 
     # acc
     print((y_pred == y_true).mean())
+    result.append((y_pred == y_true).mean())
+
+#%% w/ augmented: RF
+from sklearn.model_selection import StratifiedKFold
+from sklearn.ensemble import RandomForestClassifier
+from tqdm import tqdm
+def transform(idx):
+    new_idx = []
+    for i in idx:
+        new_idx += list(range(i*14, (i+1)*14))
+    return np.array(new_idx)
+
+result = []
+for i in tqdm(range(1,16)):
+    data, label = data_dict['Q'+str(i)], label_dict['Q'+str(i)]
+    label_ref = label_ref_dict['Q' + str(i)]
+    y_pred = np.zeros(label.shape)
+    y_true = np.zeros(label.shape)
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
+    for train_index, test_index in skf.split(label_ref, label_ref):
+        train_index = transform(train_index)
+        test_index = transform(test_index)
+
+        X_train, X_test = data[train_index], data[test_index]
+        y_train, y_test = label[train_index], label[test_index]
+        model = RandomForestClassifier(n_estimators=100, random_state=0, max_features=5, verbose=True,
+                                       n_jobs=-1)
+        model.fit(X_train, y_train)
+        y_pred[test_index] = model.predict(X_test)
+        y_true[test_index] = y_test
+
+    # acc
+    print((y_pred == y_true).mean())
+    result.append((y_pred == y_true).mean())
 
 #%% 간단한 svr 모델
 from sklearn import svm
@@ -361,3 +526,14 @@ for i in range(1,16):
 
     # acc
     print((y_pred == y_true).mean())
+
+#%% 결과 비교
+plt.figure(figsize=(5,5))
+plt.plot(np.array(result_bg) * 100, label='uniform guess', marker='x')
+plt.plot(np.array(result_1) * 100, label='w/o augmentation', marker='.')
+plt.plot(np.array(result_2) * 100, label='w/ augmentation', marker='+')
+plt.xlabel('Question number')
+plt.ylabel('Accuracy')
+plt.title('Data augmentation 전/후 결과 비교')
+plt.legend()
+plt.show()
