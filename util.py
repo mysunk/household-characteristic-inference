@@ -33,7 +33,8 @@ def load_info(path):
     info.loc[info['Q410'] == 3, 'children'] = info.loc[info['Q410'] == 3, 'Q43111']
     return info
 
-def calc_MI_corr(data, label):
+from scipy import stats
+def calc_MI_corr(data, label, is_categorical):
     ## MI
     val, count = np.unique(label, return_counts=True)
     prob = count / count.sum()
@@ -48,5 +49,12 @@ def calc_MI_corr(data, label):
     MI = H_X - H_con
 
     ## corr
-    corr_ = np.corrcoef(np.ravel(data), np.ravel(label))[0,1]
+    if is_categorical and list(val)!=[0,1]:
+        corr_ = 0
+        for ii, v in enumerate(val):
+            corr_ += np.abs(np.corrcoef(np.ravel(data), np.ravel(label==v))[0,1]) * prob[ii]
+    else:
+        print('Not categorical')
+        corr_ = np.abs(np.corrcoef(np.ravel(data), np.ravel(label))[0,1])
     return [MI, corr_]
+
