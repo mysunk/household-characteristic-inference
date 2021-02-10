@@ -1,5 +1,12 @@
 import pandas as pd
 import numpy as np
+import matplotlib
+from util import *
+
+font = {'size': 14}
+matplotlib.rc('font', **font)
+import pandas as pd
+import numpy as np
 import copy
 
 from scipy.interpolate import interp1d
@@ -90,6 +97,41 @@ def fillgap_interp(dataframe):
 
     return Se_out
 
-
 if __name__ == '__main__':
-    Process_F_Num(1)
+    # Process_F_Num(1) -- processing
+
+    ### 전력 데이터 load & concatenate
+    from os import listdir
+    from os.path import isfile, join
+    path= 'data/power/'
+    start_date, end_date = pd.to_datetime('2009-07-01 00:00:00'), pd.to_datetime('2011-01-01 00:00:00')
+    file_list = [f for f in listdir(path) if isfile(join(path, f))]
+    home_list = []
+    for i, file in enumerate(file_list):
+        print(f'{i}th file load...')
+        home = pd.read_csv(path + file, low_memory=False, names=['time',file[:4]], skiprows=1)
+        home.index = pd.to_datetime(home['time'])
+        home.drop(columns=['time'],inplace=True)
+        home = home.loc[start_date:end_date,:]
+        home_list.append(home)
+
+    power_df = pd.concat(home_list, axis=1)
+
+    # save concatenated power..
+    power_df = power_df.iloc[:2 * 24 * 365, :]  # 1년
+    power_df.to_csv('data/power_comb_SME_included.csv', index=True)
+
+#%% home_df에서 info에 없는 col은 drop ## info는 residential 빌딩..
+### 세대원 데이터
+# path = 'data/survey_for_number_of_residents.csv'
+# info = load_info(path)
+
+# drop_cols = []
+# for col in power_df.columns:
+#     print(f'Now col is {col}...')
+#     if col in np.array(info.index).astype(str):
+#         pass
+#     else:
+#         drop_cols.append(col)
+# power_df.drop(columns=drop_cols, inplace = True)
+

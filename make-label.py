@@ -22,7 +22,6 @@ Qnum = '4312'
 idx = np.where(np.array([Qnum in col for col in survey_raw.columns]))[0]
 print(survey_raw.columns[idx])
 
-
 #%% Questions 1
 """
 Young (1): age <= 35
@@ -314,3 +313,10 @@ idx_1 = survey_raw[Q430] == 8
 idx_2 = survey_raw[Q4312] == 8
 survey.loc[idx_1, 'Q15'] = 1
 survey.loc[idx_2, 'Q15'] = 1
+
+#%% sort int Q
+sorted_col = ['Q'+str(i) for i in range(1,16)]
+survey = survey.reindex(sorted_col, axis=1)
+
+#%% save
+survey.to_csv('data/survey_processed_1230.csv',index=True)
