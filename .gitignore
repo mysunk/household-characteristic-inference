@@ -3,3 +3,5 @@ data/
 results
 .idea
 __pycache__
+analysis
+models
