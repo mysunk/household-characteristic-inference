@@ -11,12 +11,12 @@ physical_devices = tf.config.list_physical_devices('GPU')
 tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
 
 ## load survey
-survey = pd.read_csv('../data/survey_processed_1230.csv')
+survey = pd.read_csv('data/survey_processed_1230.csv')
 survey['ID'] = survey['ID'].astype(str)
 survey.set_index('ID', inplace=True)
 
 ## load smart meter data
-power_df = pd.read_csv('../data/power_comb.csv')
+power_df = pd.read_csv('data/power_comb.csv')
 # 0 to NaN
 power_df[power_df==0] = np.nan
 power_df = power_df.iloc[:2*24*28,:] # 4주
@@ -48,7 +48,13 @@ def matching_ids(QID):
         if id in power_dict.keys():
             # 24시간 프로파일
             data_tmp = np.mean(power_dict[id][0], axis=0).reshape(1,-1)
-            data.append(data_tmp)
+
+            # 48 point를 24 point로 down sampling # FIXME
+            data_tmp_down = []
+            for i in range(0, 48*7, 2):
+                 data_tmp_down.append(np.nanmax(data_tmp[:,i:i+2], axis=1).reshape(-1,1))
+            data_tmp_down = np.concatenate(data_tmp_down, axis=1)
+            data.append(data_tmp_down)
             label.append(label_raw.loc[id])
     data = np.concatenate(data, axis=0)
     label = np.array(label)
@@ -80,14 +86,13 @@ for i in range(1,16):
     data_ref, label_ref = matching_ids('Q'+str(i))
     data, label = matching_ids_with_aug('Q' + str(i))
 
-    data_dict['Q'+str(i)] = data
-    label_dict['Q'+str(i)] = label
-
     label_ref_dict['Q' + str(i)] = label_ref
     data_ref_dict['Q' + str(i)] = data_ref
 
+    data_dict['Q'+str(i)] = data
+    label_dict['Q'+str(i)] = label
 
-#%% w/o augmented: CNN
+#%% CER 데이터 학습
 from sklearn.model_selection import StratifiedKFold
 from tqdm import tqdm
 from tensorflow.keras.models import Sequential
@@ -97,7 +102,8 @@ from tensorflow.keras.optimizers import Adam, SGD
 from tensorflow.keras.utils import to_categorical
 
 result = []
-for i in tqdm(range(1,16)):
+for i in tqdm([13, 12, 8, 5]):
+# for i in tqdm([8]):
     data, label_ref = data_ref_dict['Q'+str(i)], label_ref_dict['Q'+str(i)]
     binary = False
     label = to_categorical(label_ref.copy(), dtype=int)
@@ -116,20 +122,20 @@ for i in tqdm(range(1,16)):
         CNN based feature selection
         """
         # reshape
-        X_train = X_train.reshape(-1,7,48,1)
-        X_test = X_test.reshape(-1, 7, 48, 1)
+        X_train = X_train.reshape(-1,7, 24, 1)
+        X_test = X_test.reshape(-1, 7, 24, 1)
 
         #create model
         model = Sequential()
         #add model layers
-        model.add(Conv2D(8, kernel_size=(2,3), activation='relu', input_shape=(7,48,1)))
+        model.add(Conv2D(8, kernel_size=(2,3), activation='relu', input_shape=(7,24,1)))
         model.add(Conv2D(16, kernel_size=(3,3), activation='relu'))
         model.add(MaxPool2D())
         model.add(Dropout(0.1))
         model.add(Flatten())
-        model.add(Dense(320, input_shape = (320,)))
+        model.add(Dense(32, input_shape = (320,), activation='relu'))
         if binary:
-            model.add(Dense(1, activation='softmax'))
+            model.add(Dense(1, activation='sigmoid'))
         else:
             model.add(Dense(label.shape[1], activation='softmax'))
 
@@ -149,8 +155,7 @@ for i in tqdm(range(1,16)):
             model.compile(loss='categorical_crossentropy',
                           optimizer=optimizer,
                           metrics=['categorical_crossentropy'])
-        model.fit(X_train, y_train, epochs=100, verbose=1, callbacks=[es], validation_data=(X_test, y_test),
-                      batch_size=128)
+        model.fit(X_train, y_train, epochs=100, verbose=1, callbacks=[es], validation_data=(X_test, y_test))
         if binary:
             y_pred[test_index] = model.predict(X_test).reshape(-1)
         else:
@@ -160,9 +165,14 @@ for i in tqdm(range(1,16)):
     # acc
     # print((y_pred == y_true).mean())
     if binary:
-        result.append((y_pred == y_true).mean())
+        result.append(((y_pred > 0.5) == y_true).mean())
     else:
         result.append((np.argmax(y_pred, axis=1) == np.argmax(y_true, axis=1)).mean())
     print(result)
 
-    np.save('../results/CNN_CS.npy', np.array(result))
+    model.save("model_Q_"+str(i)+'.h5')
+
+# np.save('../results/CNN_CS.npy', np.array(result))
+
+
+#%% ETRI 데이터 학습
