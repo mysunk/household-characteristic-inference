@@ -58,3 +58,4 @@ def calc_MI_corr(data, label, is_categorical):
         corr_ = np.abs(np.corrcoef(np.ravel(data), np.ravel(label))[0,1])
     return [MI, corr_]
 
+
