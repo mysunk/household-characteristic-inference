@@ -109,7 +109,7 @@ from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras import regularizers
 import tensorflow.keras.backend as K
 
-def baseline_model(lr, binary):
+def baseline_model(params, binary):
 
     x_input = Input(shape=(7, 24, 1))
     x = Conv2D(8, kernel_size=(2, 3), activation='relu', input_shape=(7, 24, 1),
@@ -127,27 +127,26 @@ def baseline_model(lr, binary):
     if binary:
         x_out = Dense(1, input_shape=(32,),
                       activation='linear',use_bias=False, name='svm', kernel_regularizer=regularizers.l2(params['lambda']))(x)
-        x_out = tf.math.sign(x_out)
+        # x_out = tf.math.sign(x_out)
     else:
         x_out = Dense(label.shape[1], input_shape=(32,),
                       use_bias=False, activation='linear', name='svm', kernel_regularizer=regularizers.l2(params['lambda']))(x)
 
     model = Model(x_input, x_out)
-    model.compile(optimizer=Adam(lr, epsilon=params['epsilon']), loss='squared_hinge', metrics=['accuracy'])
+    model.compile(optimizer=Adam(params['lr'], epsilon=params['epsilon']), loss='squared_hinge')
 
     return model
 
-params = {
-    'lr': 0.001,
-    'epoch': 1000,
-    'batch_size': 128,
-    'lambda': 1e-1,
-    'epsilon': 1e-2
-}
+def make_param_int(param, key_names):
+    for key, value in param.items():
+        if key in key_names:
+            param[key] = int(param[key])
+    return param
 
-result_CNN = []
 # for i in tqdm(range(1, 16)):
-for i in tqdm([3]):
+def train(params, i = 1):
+    params = make_param_int(params, ['batch_size'])
+
     data, label_ref = data_ref_dict['Q' + str(i)], label_ref_dict['Q' + str(i)]
     label_ref = label_ref.astype(float)
     binary = False
@@ -158,8 +157,6 @@ for i in tqdm([3]):
         binary = True
         label = label[:, 1]
 
-    y_pred = np.zeros(label.shape)
-    y_true = np.zeros(label.shape)
     label = label.astype(float)
     # for svm
     label[label == 0] = -1
@@ -173,7 +170,7 @@ for i in tqdm([3]):
     # reshape
     X_train = X_train.reshape(-1, 7, 24, 1)
     X_test = X_test.reshape(-1, 7, 24, 1)
-    model = baseline_model(params['lr'], binary)
+    model = baseline_model(params, binary)
     es = EarlyStopping(
         monitor='val_loss',
         patience=10,
@@ -186,14 +183,37 @@ for i in tqdm([3]):
 
     if binary:
         y_pred = model.predict(X_test).reshape(-1)
+        print(y_pred)
+        y_pred = np.sign(y_pred)
         result = (y_pred == y_test).mean()
     else:
         y_pred = model.predict(X_test)
         result = (np.argmax(y_pred, axis=1) == np.argmax(y_test, axis=1)).mean()
-
-    result_CNN.append(result)
     # model.save("models/model_Q_"+str(i)+'.h5')
-print(result_CNN)
+    return -result
+
+from hyperopt import hp, tpe, fmin, Trials
+from functools import partial
+bayes_trials = Trials()
+tuning_algo = tpe.suggest
+objective = partial(train, i = 3)
+
+space = {
+    'lr': hp.loguniform('learning_rate', np.log(1e-5), np.log(0.5)),
+    'epoch': 100,
+    'batch_size': hp.quniform('batch_size', 64, 64*4, 64),
+    'lambda': hp.loguniform('lambda', np.log(1e-5), np.log(1)),
+    'epsilon': hp.loguniform('epsilon', np.log(1e-5), np.log(1)),
+}
+result = fmin(fn=objective, space=space, algo=tuning_algo, max_evals=10, trials=bayes_trials)
+
+# params = {
+#     'lr': 0.0001,
+#     'epoch': 1000,
+#     'batch_size': 256,
+#     'lambda': 1e-1,
+#     'epsilon': 1e-2
+# }
 
 #%% CER 데이터 학습 -- rf
 from sklearn.ensemble import RandomForestClassifier
