@@ -98,6 +98,134 @@ for i in tqdm(range(1,16)):
     data_dict['Q'+str(i)] = data
     label_dict['Q'+str(i)] = label
 
+#%% CER 데이터 학습 -- CNN
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Conv2D, Flatten, MaxPool2D, Dropout, Input
+from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.optimizers import Adam, SGD
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras import initializers
+from tensorflow.keras.models import Sequential, Model
+
+import tensorflow.keras.backend as K
+
+def baseline_model(lr, binary):
+
+    x_input = Input(shape=(7, 24, 1))
+    x = Conv2D(8, kernel_size=(2, 3), activation='relu', input_shape=(7, 24, 1),
+           kernel_initializer=initializers.RandomNormal(stddev=0.01, mean=0),
+           bias_initializer=initializers.Ones())(x_input)
+    x = Conv2D(16, kernel_size=(3, 3), activation='relu', kernel_initializer=initializers.RandomNormal(stddev=0.01, mean=0),
+           bias_initializer=initializers.Ones())(x)
+    x = MaxPool2D()(x)
+    x = Dropout(0.1)(x)
+    x = Flatten()(x)
+    x = Dense(32, input_shape=(320,), kernel_initializer=initializers.RandomNormal(stddev=0.01, mean=0),
+           bias_initializer=initializers.Ones())(x)
+
+    # Add svm layer
+    if binary:
+        x_out = Dense(1, input_shape=(32,), use_bias=False, activation='linear', name='svm')(x)
+    else:
+        x_out = Dense(label.shape[1], input_shape=(32,), use_bias=False, activation='linear', name='svm')(x)
+
+    model = Model(x_input, x_out)
+    lambda_ = 0
+    # SVM
+    def svm_loss(layer):
+        weights = layer.weights[0]
+        weights_tf = tf.convert_to_tensor(weights)
+
+        def categorical_hinge_loss(y_true, y_pred):
+            y_pred = tf.math.sign(y_pred)
+
+            pos = K.sum(y_true * y_pred, axis=-1)
+            neg = K.max((1.0 - y_true) * y_pred, axis=-1)
+            hinge_loss = K.mean(K.maximum(0.0, neg - pos + 1), axis=-1)
+            regularization_loss = lambda_ * (tf.reduce_sum(tf.square(weights_tf)))
+            return regularization_loss + hinge_loss
+
+        return categorical_hinge_loss
+    if binary:
+        metrics = ['categorical_crossentropy']
+    else:
+        metrics = ['categorical_crossentropy']
+
+    model.compile(optimizer=SGD(), loss=svm_loss(model.get_layer('svm')), metrics=metrics)
+
+    return model
+
+def train_model(data, label_ref, params):
+    binary = False
+    label = to_categorical(label_ref.copy(), dtype=int)
+
+    # binary or multi
+    if np.all(np.unique(label_ref) == np.array([0, 1])):
+        binary = True
+        label = label[:, 1]
+
+    y_pred = np.zeros(label.shape)
+    y_true = np.zeros(label.shape)
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
+    label = label.astype(float)
+    label[label == 0] = -1
+
+    for train_index, test_index in skf.split(data, label_ref):
+
+        X_train, X_test = data[train_index], data[test_index]
+        y_train, y_test = label[train_index], label[test_index]
+        """ 
+        CNN based feature selection
+        """
+        # reshape
+        X_train = X_train.reshape(-1, 7, 24, 1)
+        X_test = X_test.reshape(-1, 7, 24, 1)
+        model = baseline_model(params['lr'], binary)
+        es = EarlyStopping(
+            monitor='val_loss',
+            patience=10,
+            verbose=0,
+            mode='min',
+            restore_best_weights=True
+        )
+        model.fit(X_train, y_train, epochs=params['epoch'], verbose=1, callbacks=[es], validation_data=(X_test, y_test), batch_size = 128)
+
+        if binary:
+            y_pred[test_index] = model.predict(X_test).reshape(-1)
+        else:
+            y_pred[test_index] = model.predict(X_test)
+        y_true[test_index] = y_test
+
+    if binary:
+        y_pred[y_pred < 0] = 0
+        y_pred[y_pred > 0] = 1
+
+        y_true[y_true < 0] = 0
+        y_true[y_true > 0] = 1
+
+        result = (y_pred == y_true).mean()
+        print(result)
+    else:
+        result = (np.argmax(y_pred, axis=1) == np.argmax(y_true, axis=1)).mean()
+
+    return model, result
+
+params = {
+    'lr': 0.001,
+    'epoch': 100
+}
+
+result_CNN = []
+# for i in tqdm(range(1, 16)):
+for i in tqdm([3]):
+    data, label_ref = data_ref_dict['Q'+str(i)], label_ref_dict['Q'+str(i)]
+    label_ref = label_ref.astype(float)
+    model, result = train_model(data, label_ref, params)
+    result_CNN.append(result)
+# model.save("models/model_Q_"+str(i)+'.h5')
+print(result_CNN)
+
+
 #%% CER 데이터 학습 -- rf
 from sklearn.ensemble import RandomForestClassifier
 
@@ -122,111 +250,3 @@ for i in tqdm(range(1, 16)):
     result_rf.append(result)
 
 print(result_rf)
-
-#%% CER 데이터 학습 -- CNN
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Conv2D, Flatten, MaxPool2D, Dropout
-from tensorflow.keras.callbacks import EarlyStopping
-from tensorflow.keras.optimizers import Adam, SGD
-from tensorflow.keras.utils import to_categorical
-from tensorflow.keras import initializers
-from tensorflow.keras.models import Sequential, Model
-
-import tensorflow.keras.backend as K
-
-def baseline_model(lr, binary):
-    # create model
-    model = Sequential()
-    # add model layers
-    model.add(Conv2D(8, kernel_size=(2, 3), activation='relu', input_shape=(7, 24, 1),kernel_initializer=initializers.RandomNormal(stddev=0.01, mean=0),
-    bias_initializer=initializers.Ones()))
-    model.add(Conv2D(16, kernel_size=(3, 3), activation='relu',kernel_initializer=initializers.RandomNormal(stddev=0.01, mean=0),
-    bias_initializer=initializers.Ones()))
-    model.add(MaxPool2D())
-    model.add(Dropout(0.1))
-    model.add(Flatten())
-    model.add(Dense(32, input_shape=(320,),kernel_initializer=initializers.RandomNormal(stddev=0.01, mean=0),
-    bias_initializer=initializers.Ones(), name='dense_output'))
-
-    optimizer = SGD(lr=lr)
-
-    if binary:
-    #     model.add(Dense(1, activation='sigmoid',kernel_initializer=initializers.RandomNormal(stddev=0.01, mean=0),
-    # bias_initializer=initializers.Ones()))
-        model.add(Dense(1, activation='sigmoid', kernel_initializer=initializers.RandomNormal(stddev=0.01, mean=0),
-                        bias_initializer=initializers.Ones()))
-        model.compile(loss='binary_crossentropy',
-                  optimizer=optimizer,
-                  metrics=['binary_crossentropy'])
-    else:
-        model.add(Dense(label.shape[1], activation='softmax',kernel_initializer=initializers.RandomNormal(stddev=0.01, mean=0),
-    bias_initializer=initializers.Ones()))
-        model.compile(loss='categorical_crossentropy',
-                      optimizer=optimizer,
-                      metrics=['categorical_crossentropy'])
-
-    return model
-
-def train_model(data, label_ref, params):
-    binary = False
-    label = to_categorical(label_ref.copy(), dtype=int)
-
-    # binary or multi
-    if np.all(np.unique(label_ref) == np.array([0, 1])):
-        binary = True
-        label = label[:, 1]
-
-    y_pred = np.zeros(label.shape)
-    y_true = np.zeros(label.shape)
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
-
-    for train_index, test_index in skf.split(data, label_ref):
-
-        X_train, X_test = data[train_index], data[test_index]
-        y_train, y_test = label[train_index], label[test_index]
-        """ 
-        CNN based feature selection
-        """
-        # reshape
-        X_train = X_train.reshape(-1, 7, 24, 1)
-        X_test = X_test.reshape(-1, 7, 24, 1)
-        model = baseline_model(params['lr'], binary)
-        es = EarlyStopping(
-            monitor='val_loss',
-            patience=10,
-            verbose=0,
-            mode='auto',
-            restore_best_weights=True
-        )
-        model.fit(X_train, y_train, epochs=params['epoch'], verbose=1, callbacks=[es], validation_data=(X_test, y_test), batch_size = 128)
-
-        model_feat = Model(inputs=model.input, outputs=model.get_layer('dense_1').output)
-
-        if binary:
-            y_pred[test_index] = model.predict(X_test).reshape(-1)
-        else:
-            y_pred[test_index] = model.predict(X_test)
-        y_true[test_index] = y_test
-
-    if binary:
-        result = ((y_pred > 0.5) == y_true).mean()
-    else:
-        result = (np.argmax(y_pred, axis=1) == np.argmax(y_true, axis=1)).mean()
-
-    return model, result
-
-
-params = {
-    'lr': 0.1,
-    'epoch': 100
-}
-
-result_CNN = []
-# for i in tqdm(range(1, 16)):
-for i in tqdm([3]):
-    data, label_ref = data_ref_dict['Q'+str(i)], label_ref_dict['Q'+str(i)]
-    label_ref = label_ref.astype(float)
-    model, result = train_model(data, label_ref, params)
-    result_CNN.append(result)
-# model.save("models/model_Q_"+str(i)+'.h5')
-print(result_CNN)
