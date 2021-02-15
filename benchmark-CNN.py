@@ -107,7 +107,6 @@ from tensorflow.keras.utils import to_categorical
 from tensorflow.keras import initializers
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras import regularizers
-
 import tensorflow.keras.backend as K
 
 def baseline_model(lr, binary):
@@ -127,28 +126,29 @@ def baseline_model(lr, binary):
     # Add svm layer
     if binary:
         x_out = Dense(1, input_shape=(32,),
-                      activation='linear',use_bias=False, name='svm', kernel_regularizer=regularizers.l2(0.0001))(x)
+                      activation='linear',use_bias=False, name='svm', kernel_regularizer=regularizers.l2(params['lambda']))(x)
+        x_out = tf.math.sign(x_out)
     else:
         x_out = Dense(label.shape[1], input_shape=(32,),
-                      use_bias=False, activation='linear', name='svm', kernel_regularizer=regularizers.l2(0.0001))(x)
+                      use_bias=False, activation='linear', name='svm', kernel_regularizer=regularizers.l2(params['lambda']))(x)
 
     model = Model(x_input, x_out)
-
-    metrics = ['accuracy']
-
-    model.compile(optimizer=Adam(), loss='squared_hinge', metrics=metrics)
+    model.compile(optimizer=Adam(lr, epsilon=params['epsilon']), loss='squared_hinge', metrics=['accuracy'])
 
     return model
 
 params = {
-    'lr': 0.1,
-    'epoch': 100
+    'lr': 0.001,
+    'epoch': 1000,
+    'batch_size': 128,
+    'lambda': 1e-1,
+    'epsilon': 1e-2
 }
 
 result_CNN = []
 # for i in tqdm(range(1, 16)):
 for i in tqdm([3]):
-    data, label_ref = data_ref_dict['Q'+str(i)], label_ref_dict['Q'+str(i)]
+    data, label_ref = data_ref_dict['Q' + str(i)], label_ref_dict['Q' + str(i)]
     label_ref = label_ref.astype(float)
     binary = False
     label = to_categorical(label_ref.copy(), dtype=int)
@@ -160,46 +160,40 @@ for i in tqdm([3]):
 
     y_pred = np.zeros(label.shape)
     y_true = np.zeros(label.shape)
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
     label = label.astype(float)
+    # for svm
     label[label == 0] = -1
 
-    for train_index, test_index in skf.split(data, label_ref):
+    from sklearn.model_selection import train_test_split
 
-        X_train, X_test = data[train_index], data[test_index]
-        y_train, y_test = label[train_index], label[test_index]
-        """ 
-        CNN based feature selection
-        """
-        # reshape
-        X_train = X_train.reshape(-1, 7, 24, 1)
-        X_test = X_test.reshape(-1, 7, 24, 1)
-        model = baseline_model(params['lr'], binary)
-        es = EarlyStopping(
-            monitor='val_loss',
-            patience=10,
-            verbose=0,
-            mode='min',
-            restore_best_weights=True
-        )
-        model.fit(X_train, y_train, epochs=params['epoch'], verbose=1, callbacks=[es], validation_data=(X_test, y_test),
-                  batch_size=128)
-
-        if binary:
-            y_pred[test_index] = model.predict(X_test).reshape(-1)
-        else:
-            y_pred[test_index] = model.predict(X_test)
-        y_true[test_index] = y_test
+    X_train, X_test, y_train, y_test = train_test_split(data, label, test_size = 0.2, random_state = 0, stratify = label)
+    """ 
+    CNN based feature selection
+    """
+    # reshape
+    X_train = X_train.reshape(-1, 7, 24, 1)
+    X_test = X_test.reshape(-1, 7, 24, 1)
+    model = baseline_model(params['lr'], binary)
+    es = EarlyStopping(
+        monitor='val_loss',
+        patience=10,
+        verbose=0,
+        mode='min',
+        restore_best_weights=True
+    )
+    model.fit(X_train, y_train, epochs=params['epoch'], verbose=0, callbacks=[es], validation_data=(X_test, y_test),
+              batch_size=params['batch_size'])
 
     if binary:
-        y_pred = np.sign(y_pred)
-        result = (y_pred == y_true).mean()
+        y_pred = model.predict(X_test).reshape(-1)
+        result = (y_pred == y_test).mean()
     else:
-        result = (np.argmax(y_pred, axis=1) == np.argmax(y_true, axis=1)).mean()
+        y_pred = model.predict(X_test)
+        result = (np.argmax(y_pred, axis=1) == np.argmax(y_test, axis=1)).mean()
+
     result_CNN.append(result)
     # model.save("models/model_Q_"+str(i)+'.h5')
 print(result_CNN)
-
 
 #%% CER 데이터 학습 -- rf
 from sklearn.ensemble import RandomForestClassifier
