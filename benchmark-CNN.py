@@ -106,6 +106,7 @@ from tensorflow.keras.optimizers import Adam, SGD
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras import initializers
 from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras import regularizers
 
 import tensorflow.keras.backend as K
 
@@ -125,37 +126,30 @@ def baseline_model(lr, binary):
 
     # Add svm layer
     if binary:
-        x_out = Dense(1, input_shape=(32,), use_bias=False, activation='linear', name='svm')(x)
+        x_out = Dense(1, input_shape=(32,),
+                      activation='linear',use_bias=False, name='svm', kernel_regularizer=regularizers.l2(0.0001))(x)
     else:
-        x_out = Dense(label.shape[1], input_shape=(32,), use_bias=False, activation='linear', name='svm')(x)
+        x_out = Dense(label.shape[1], input_shape=(32,),
+                      use_bias=False, activation='linear', name='svm', kernel_regularizer=regularizers.l2(0.0001))(x)
 
     model = Model(x_input, x_out)
-    lambda_ = 0
-    # SVM
-    def svm_loss(layer):
-        weights = layer.weights[0]
-        weights_tf = tf.convert_to_tensor(weights)
 
-        def categorical_hinge_loss(y_true, y_pred):
-            y_pred = tf.math.sign(y_pred)
+    metrics = ['accuracy']
 
-            pos = K.sum(y_true * y_pred, axis=-1)
-            neg = K.max((1.0 - y_true) * y_pred, axis=-1)
-            hinge_loss = K.mean(K.maximum(0.0, neg - pos + 1), axis=-1)
-            regularization_loss = lambda_ * (tf.reduce_sum(tf.square(weights_tf)))
-            return regularization_loss + hinge_loss
-
-        return categorical_hinge_loss
-    if binary:
-        metrics = ['categorical_crossentropy']
-    else:
-        metrics = ['categorical_crossentropy']
-
-    model.compile(optimizer=SGD(), loss=svm_loss(model.get_layer('svm')), metrics=metrics)
+    model.compile(optimizer=Adam(), loss='squared_hinge', metrics=metrics)
 
     return model
 
-def train_model(data, label_ref, params):
+params = {
+    'lr': 0.1,
+    'epoch': 100
+}
+
+result_CNN = []
+# for i in tqdm(range(1, 16)):
+for i in tqdm([3]):
+    data, label_ref = data_ref_dict['Q'+str(i)], label_ref_dict['Q'+str(i)]
+    label_ref = label_ref.astype(float)
     binary = False
     label = to_categorical(label_ref.copy(), dtype=int)
 
@@ -188,7 +182,8 @@ def train_model(data, label_ref, params):
             mode='min',
             restore_best_weights=True
         )
-        model.fit(X_train, y_train, epochs=params['epoch'], verbose=1, callbacks=[es], validation_data=(X_test, y_test), batch_size = 128)
+        model.fit(X_train, y_train, epochs=params['epoch'], verbose=1, callbacks=[es], validation_data=(X_test, y_test),
+                  batch_size=128)
 
         if binary:
             y_pred[test_index] = model.predict(X_test).reshape(-1)
@@ -197,32 +192,12 @@ def train_model(data, label_ref, params):
         y_true[test_index] = y_test
 
     if binary:
-        y_pred[y_pred < 0] = 0
-        y_pred[y_pred > 0] = 1
-
-        y_true[y_true < 0] = 0
-        y_true[y_true > 0] = 1
-
+        y_pred = np.sign(y_pred)
         result = (y_pred == y_true).mean()
-        print(result)
     else:
         result = (np.argmax(y_pred, axis=1) == np.argmax(y_true, axis=1)).mean()
-
-    return model, result
-
-params = {
-    'lr': 0.001,
-    'epoch': 100
-}
-
-result_CNN = []
-# for i in tqdm(range(1, 16)):
-for i in tqdm([3]):
-    data, label_ref = data_ref_dict['Q'+str(i)], label_ref_dict['Q'+str(i)]
-    label_ref = label_ref.astype(float)
-    model, result = train_model(data, label_ref, params)
     result_CNN.append(result)
-# model.save("models/model_Q_"+str(i)+'.h5')
+    # model.save("models/model_Q_"+str(i)+'.h5')
 print(result_CNN)
 
 
