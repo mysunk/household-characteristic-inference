@@ -167,10 +167,12 @@ Energy-efficient light bulb proportion
 """
 Q4905 = 'Question 4905: And now considering energy reduction in your home please indicate the approximate proportion of light bulbs which are energy saving (or CFL)?  INT:READ OUT'
 
-idx = survey_raw[Q4905] <= 3
+# idx = survey_raw[Q4905] <= 3
+idx = survey_raw[Q4905] <= 2
 survey['Q6'] = 0
 survey.loc[idx, 'Q6'] = 1
-idx = survey_raw[Q4905] >= 4
+# idx = survey_raw[Q4905] >= 4
+idx = survey_raw[Q4905] >= 3
 survey.loc[idx, 'Q6'] = 2
 
 #%% Question 7
@@ -319,4 +321,4 @@ sorted_col = ['Q'+str(i) for i in range(1,16)]
 survey = survey.reindex(sorted_col, axis=1)
 
 #%% save
-survey.to_csv('data/survey_processed_1230.csv',index=True)
+survey.to_csv('data/survey_processed_0216.csv',index=True)
