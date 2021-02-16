@@ -15,7 +15,9 @@ physical_devices = tf.config.list_physical_devices('GPU')
 tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
 
 ## load survey
-survey = pd.read_csv('data/survey_processed_1230.csv')
+# survey = pd.read_csv('data/survey_processed_1230.csv')
+survey = pd.read_csv('data/survey_processed_0216.csv')
+
 survey['ID'] = survey['ID'].astype(str)
 survey.set_index('ID', inplace=True)
 
@@ -98,144 +100,63 @@ for i in tqdm(range(1,16)):
     data_dict['Q'+str(i)] = data
     label_dict['Q'+str(i)] = label
 
-#%% CER 데이터 학습 -- CNN
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Conv2D, Flatten, MaxPool2D, Dropout, Input
-from tensorflow.keras.callbacks import EarlyStopping
-from tensorflow.keras.optimizers import Adam, SGD
-from tensorflow.keras.utils import to_categorical
-from tensorflow.keras import initializers
-from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras import regularizers
-import tensorflow.keras.backend as K
-
-def baseline_model(params, binary):
-
-    x_input = Input(shape=(7, 24, 1))
-    x = Conv2D(8, kernel_size=(2, 3), activation='relu', input_shape=(7, 24, 1),
-           kernel_initializer=initializers.RandomNormal(stddev=0.01, mean=0),
-           bias_initializer=initializers.Ones())(x_input)
-    x = Conv2D(16, kernel_size=(3, 3), activation='relu', kernel_initializer=initializers.RandomNormal(stddev=0.01, mean=0),
-           bias_initializer=initializers.Ones())(x)
-    x = MaxPool2D()(x)
-    x = Dropout(0.1)(x)
-    x = Flatten()(x)
-    x = Dense(32, input_shape=(320,), kernel_initializer=initializers.RandomNormal(stddev=0.01, mean=0),
-           bias_initializer=initializers.Ones())(x)
-
-    # Add svm layer
-    if binary:
-        x_out = Dense(1, input_shape=(32,),
-                      activation='linear',use_bias=False, name='svm', kernel_regularizer=regularizers.l2(params['lambda']))(x)
-        # x_out = tf.math.sign(x_out)
-    else:
-        x_out = Dense(label.shape[1], input_shape=(32,),
-                      use_bias=False, activation='linear', name='svm', kernel_regularizer=regularizers.l2(params['lambda']))(x)
-
-    model = Model(x_input, x_out)
-    model.compile(optimizer=Adam(params['lr'], epsilon=params['epsilon']), loss='squared_hinge')
-
-    return model
-
-def make_param_int(param, key_names):
-    for key, value in param.items():
-        if key in key_names:
-            param[key] = int(param[key])
-    return param
-
-# for i in tqdm(range(1, 16)):
-def train(params, i = 1):
-    params = make_param_int(params, ['batch_size'])
-
-    data, label_ref = data_ref_dict['Q' + str(i)], label_ref_dict['Q' + str(i)]
-    label_ref = label_ref.astype(float)
-    binary = False
-    label = to_categorical(label_ref.copy(), dtype=int)
-
-    # binary or multi
-    if np.all(np.unique(label_ref) == np.array([0, 1])):
-        binary = True
-        label = label[:, 1]
-
-    label = label.astype(float)
-    # for svm
-    label[label == 0] = -1
-
-    from sklearn.model_selection import train_test_split
-
-    X_train, X_test, y_train, y_test = train_test_split(data, label, test_size = 0.2, random_state = 0, stratify = label)
-    """ 
-    CNN based feature selection
-    """
-    # reshape
-    X_train = X_train.reshape(-1, 7, 24, 1)
-    X_test = X_test.reshape(-1, 7, 24, 1)
-    model = baseline_model(params, binary)
-    es = EarlyStopping(
-        monitor='val_loss',
-        patience=10,
-        verbose=0,
-        mode='min',
-        restore_best_weights=True
-    )
-    model.fit(X_train, y_train, epochs=params['epoch'], verbose=0, callbacks=[es], validation_data=(X_test, y_test),
-              batch_size=params['batch_size'])
-
-    if binary:
-        y_pred = model.predict(X_test).reshape(-1)
-        print(y_pred)
-        y_pred = np.sign(y_pred)
-        result = (y_pred == y_test).mean()
-    else:
-        y_pred = model.predict(X_test)
-        result = (np.argmax(y_pred, axis=1) == np.argmax(y_test, axis=1)).mean()
-    # model.save("models/model_Q_"+str(i)+'.h5')
-    return -result
-
-from hyperopt import hp, tpe, fmin, Trials
+# result dict
+CNN_result_dict = dict()
+CNN_param_dict = dict()
+#%% 학습
+from hyperopt import hp, tpe, fmin, Trials, STATUS_OK
 from functools import partial
-bayes_trials = Trials()
-tuning_algo = tpe.suggest
-objective = partial(train, i = 3)
+from util import train
 
+tuning_algo = tpe.suggest
 space = {
-    'lr': hp.loguniform('learning_rate', np.log(1e-5), np.log(0.5)),
-    'epoch': 100,
-    'batch_size': hp.quniform('batch_size', 64, 64*4, 64),
+    'lr': hp.loguniform('lr', np.log(1e-5), np.log(0.3)),
+    'epoch': 1000,
+    'batch_size': hp.quniform('batch_size', 32, 32*20, 32),
     'lambda': hp.loguniform('lambda', np.log(1e-5), np.log(1)),
     'epsilon': hp.loguniform('epsilon', np.log(1e-5), np.log(1)),
 }
-result = fmin(fn=objective, space=space, algo=tuning_algo, max_evals=10, trials=bayes_trials)
 
-# params = {
-#     'lr': 0.0001,
-#     'epoch': 1000,
-#     'batch_size': 256,
-#     'lambda': 1e-1,
-#     'epsilon': 1e-2
-# }
+for question_number in [13, 12, 3, 8, 5]:
+    print(f'===={question_number}====')
+
+    # load data corresponding to questtion
+    data, label_ref = data_ref_dict['Q' + str(question_number)], label_ref_dict['Q' + str(question_number)]
+
+    # bayes opt
+    bayes_trials = Trials()
+    objective = partial(train, data = data, label_ref = label_ref, i = question_number, random_state = 1)
+    result = fmin(fn=objective, space=space, algo=tuning_algo, max_evals=50, trials=bayes_trials)
+
+    # save the result
+    trials = sorted(bayes_trials.results, key=lambda k: k['loss'])
+    if question_number in CNN_result_dict.keys():
+        if CNN_result_dict[question_number] < trials[0]['loss']:
+            CNN_result_dict[question_number] = trials[0]['loss']
+            CNN_param_dict[question_number] = trials[0]['params']
+            # search한 parameter로 학습
+            train(params = CNN_param_dict[question_number],data = data, label_ref = label_ref, i = question_number, save_model=True)
+    del objective, result, trials, bayes_trials
 
 #%% CER 데이터 학습 -- rf
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 
 result_rf = []
 for i in tqdm(range(1, 16)):
     data, label = data_ref_dict['Q'+str(i)], label_ref_dict['Q'+str(i)]
-    y_pred = np.zeros(label.shape)
-    y_true = np.zeros(label.shape)
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
 
-    for train_index, test_index in tqdm(skf.split(data, label)):
-        X_train, X_test = data[train_index], data[test_index]
-        y_train, y_test = label[train_index], label[test_index]
-        model = RandomForestClassifier(n_estimators=100, random_state=0, max_features=5, verbose=True,
-                                       n_jobs=-1)
-        model.fit(X_train, y_train)
-        y_pred[test_index] = model.predict(X_test)
-        y_true[test_index] = y_test
+    X_train, X_test, y_train, y_test = train_test_split(data, label, test_size=0.2, random_state=0, stratify=label)
 
-    result = (y_pred == y_true).mean()
+
+    model = RandomForestClassifier(n_estimators=100, random_state=0, max_features=5, verbose=True,
+                                   n_jobs=-1)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+
+    result = (y_pred == y_test).mean()
 
     result_rf.append(result)
 
 print(result_rf)
+result_rf[7]

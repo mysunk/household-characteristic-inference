@@ -76,15 +76,15 @@ label_appliances[label_appliances<=6] = 1
 label_appliances[(label_appliances> 6) * (label_appliances <= 8)] = 2
 label_appliances[label_appliances > 8] = 3
 
-# have child
+# 3. have child
 label_child = extra_info.loc['child_include_teen',:].values.copy()
 label_child[label_child>0] = 1
 
-# single
-label_single = (extra_info.loc['adult_num',:].values == 1) * (extra_info.loc['child_num',:].values == 0)
+# 4. single
+label_single = (extra_info.loc['adult_num',:].values == 1) * (extra_info.loc['child_include_teen',:].values == 0)
 label_single = label_single.astype(int)
 
-# area
+# 5. area
 label_area = extra_info.loc['area',:].values.copy()
 label_area[label_area < 20] = 1
 label_area[(label_area >= 20) * (label_area <= 22)] = 2
@@ -96,7 +96,7 @@ from sklearn.ensemble import RandomForestClassifier
 from tqdm import tqdm
 
 result_rf = []
-for label in [label_residents, label_appliances, label_single, label_area]:
+for label in [label_residents, label_appliances, label_child, label_single, label_area]:
     data = data_2d
     y_pred = np.zeros(label.shape)
     y_true = np.zeros(label.shape)
@@ -119,159 +119,126 @@ for label in [label_residents, label_appliances, label_single, label_area]:
 
     result_rf.append((y_pred == y_true).mean())
 
-#%% CNN
-from sklearn.model_selection import StratifiedKFold
-from tqdm import tqdm
+#%% 저장할 dictionary 선언
+labels = [label_residents, label_appliances, label_child, label_single, label_area]
+
+CNN_result_dict = dict()
+CNN_param_dict = dict()
+
+#%% CNN 학습
+from hyperopt import hp, tpe, fmin, Trials, STATUS_OK
+from functools import partial
+from util import train
+
+space = {
+    'lr': hp.loguniform('lr', np.log(1e-5), np.log(0.3)),
+    'epoch': 100,
+    'batch_size': hp.quniform('batch_size', 32, 32*20, 32),
+    'lambda': hp.loguniform('lambda', np.log(1e-5), np.log(1)),
+    'epsilon': hp.loguniform('epsilon', np.log(1e-5), np.log(1)),
+}
+
+for question_number in range(5):
+    bayes_trials = Trials()
+    tuning_algo = tpe.suggest
+    objective = partial(train, data = data_2d, label_ref = labels[question_number], i = question_number)
+    result = fmin(fn=objective, space=space, algo=tuning_algo, max_evals=30, trials=bayes_trials)
+    trials = sorted(bayes_trials.results, key=lambda k: k['loss'])
+    CNN_param_dict[question_number] = trials[0]['params']
+    CNN_result_dict[question_number] = trials[0]['loss']
+
+#%% transfer learning
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Conv2D, Flatten, MaxPool2D, Dropout
+from tensorflow.keras.layers import Dense, Conv2D, Flatten, MaxPool2D, Dropout, Input
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.optimizers import Adam, SGD
 from tensorflow.keras.utils import to_categorical
+from tensorflow.keras import initializers
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras import regularizers
+import tensorflow.keras.backend as K
 
-
-def baseline_model(binary):
-    # create model
-    model = Sequential()
-    # add model layers
-    model.add(Conv2D(8, kernel_size=(2, 3), activation='relu', input_shape=(7, 24, 1)))
-    model.add(Conv2D(16, kernel_size=(3, 3), activation='relu'))
-    model.add(MaxPool2D())
-    model.add(Dropout(0.1))
-    model.add(Flatten())
-    model.add(Dense(32, input_shape=(320,)))
-    if binary:
-        model.add(Dense(1, activation='sigmoid'))
-    else:
-        model.add(Dense(label.shape[1], activation='softmax'))
-
-    optimizer = Adam(0.007)
-
-    if binary:
-        model.compile(loss='binary_crossentropy',
-                      optimizer=optimizer,
-                      metrics=['binary_crossentropy'])
-    else:
-        model.compile(loss='categorical_crossentropy',
-                      optimizer=optimizer,
-                      metrics=['categorical_crossentropy'])
-    return model
-
-result = []
-for i, label in enumerate([label_residents, label_appliances, label_single, label_area]):
-# for label in [label_residents]:
-    label_raw = label.copy()
-    label = to_categorical(label, dtype=int)
-    data = data_2d
-    binary = False
-    if np.all(np.unique(label_raw) == np.array([0,1])):
-        binary = True
-        label = label[:, 1]
-    y_pred = np.zeros(label.shape)
-    y_true = np.zeros(label.shape)
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
-    for train_index, test_index in skf.split(data, label_raw):
-        X_train, X_test = data[train_index], data[test_index]
-        y_train, y_test = label[train_index], label[test_index]
-        """ 
-        CNN based feature selection
-        """
-        # reshape
-        X_train = X_train.reshape(-1, 7, 24, 1)
-        X_test = X_test.reshape(-1, 7, 24, 1)
-
-        model = baseline_model(binary)
-        es = EarlyStopping(
-            monitor='val_loss',
-            patience=10,
-            verbose=0,
-            mode='auto',
-            restore_best_weights=True
-        )
-        model.fit(X_train, y_train, epochs=300, verbose=1, callbacks=[es], validation_data=(X_test, y_test))
-        # model = models[i]
-        if binary:
-            y_pred[test_index] = model.predict(X_test).reshape(-1)
-        else:
-            y_pred[test_index] = model.predict(X_test)
-        y_true[test_index] = y_test
-
-        # acc
-        # print((y_pred == y_true).mean())
-    if binary:
-        result.append(((y_pred > 0.5) == y_true).mean())
-    else:
-        result.append((np.argmax(y_pred, axis=1) == np.argmax(y_true, axis=1)).mean())
-    print(result)
-
-#%% transfer learning
-question_list = [13, 12, 8, 5]
-models = []
-for q in question_list:
-    models.append(tf.keras.models.load_model(f"models/model_Q_{q}.h5")) # number of residents
+# question_list = [13, 12, 3, 8, 5]
+# models = []
+# for q in [3]:
+#     models.append(tf.keras.models.load_model(f"models/model_Q_{q}.h5")) # number of residents
 
 result_tr = []
-for i, label in enumerate([label_residents, label_appliances, label_single, label_area]):
-# for label in [label_area]:
+for i, question_number in tqdm(enumerate([13, 12, 3, 8, 5])):
+    params = CNN_param_dict[i]
+    params['lr'] = params['lr'] / 10
+    params['epoch'] = 100
+
+    label = labels[i]
     label_raw = label.copy()
     label = to_categorical(label, dtype=int)
     data = data_2d
     binary = False
-    if np.all(np.unique(label_raw) == np.array([0,1])):
+    if np.all(np.unique(label_raw) == np.array([0, 1])):
         binary = True
         label = label[:, 1]
-    y_pred = np.zeros(label.shape)
-    y_true = np.zeros(label.shape)
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
-    for train_index, test_index in skf.split(data, label_raw):
-        X_train, X_test = data[train_index], data[test_index]
-        y_train, y_test = label[train_index], label[test_index]
-        """ 
-        CNN based feature selection
-        """
-        # reshape
-        X_train = X_train.reshape(-1, 7, 24, 1)
-        X_test = X_test.reshape(-1, 7, 24, 1)
 
-        base_model = models[i]
-        base_model.trainable = False
+    label = label.astype(float)
 
-        inputs = tf.keras.Input(shape=(7, 24, 1))
-        # We make sure that the base_model is running in inference mode here,
-        # by passing `training=False`. This is important for fine-tuning, as you will
-        # learn in a few paragraphs.
-        x = base_model(inputs, training=False)
+    from sklearn.model_selection import train_test_split
 
-        # layer 하나 더 쌓음
-        x = tf.keras.layers.Dense(16, activation='relu')(x)
+    X_train, X_test, y_train, y_test = train_test_split(data, label, test_size=0.2, random_state=0, stratify=label)
+    """ 
+    CNN based feature selection
+    """
+    # reshape
+    X_train = X_train.reshape(-1, 7, 24, 1)
+    X_test = X_test.reshape(-1, 7, 24, 1)
 
-        if binary:
-            outputs = tf.keras.layers.Dense(1, activation='sigmoid')(x)
-        else:
-            outputs = tf.keras.layers.Dense(label.shape[1], activation='softmax')(x)
-        model = tf.keras.Model(inputs, outputs)
+    base_model = tf.keras.models.load_model(f"models/model_Q_{question_number}.h5")
+    base_model.trainable = False
 
-        # compile 및 학습
-        optimizer = Adam(0.01)
-        if binary:
-            model.compile(loss='binary_crossentropy',
-                          optimizer=optimizer,
-                          metrics=['binary_crossentropy'])
-        else:
-            model.compile(loss='categorical_crossentropy',
-                          optimizer=optimizer,
-                          metrics=['categorical_crossentropy'])
-        model.fit(X_train, y_train, epochs=100, verbose=0, callbacks=[es], validation_data=(X_test, y_test))
+    model = Sequential()
+    for layer in base_model.layers[:-1]: # go through until last layer
+        model.add(layer)
 
-        if binary:
-            y_pred[test_index] = model.predict(X_test).reshape(-1)
-        else:
-            y_pred[test_index] = model.predict(X_test)
-        y_true[test_index] = y_test
+    inputs = tf.keras.Input(shape=(7, 24, 1))
+    # We make sure that the base_model is running in inference mode here,
+    # by passing `training=False`. This is important for fine-tuning, as you will
+    # learn in a few paragraphs.
+    x = model(inputs, training=False)
 
-        # acc
-        # print((y_pred == y_true).mean())
+    # layer 하나 더 쌓음
+    x = tf.keras.layers.Dense(16, activation='relu')(x)
+
     if binary:
-        result_tr.append(((y_pred > 0.5) == y_true).mean())
+        x_out = Dense(1, input_shape=(16,),
+                      activation='sigmoid', use_bias=True)(x)
     else:
-        result_tr.append((np.argmax(y_pred, axis=1) == np.argmax(y_true, axis=1)).mean())
-    print(result_tr)
+        x_out = Dense(label.shape[1], input_shape=(16,),
+                      activation='softmax', use_bias=True)(x)
+
+    model = tf.keras.Model(inputs, x_out)
+
+    # compile 및 학습
+    optimizer = Adam(params['lr'], epsilon=params['epsilon'])
+    if binary:
+        model.compile(optimizer=optimizer, loss='binary_crossentropy')
+    else:
+        model.compile(optimizer=optimizer, loss='categorical_crossentropy')
+
+    es = EarlyStopping(
+        monitor='val_loss',
+        patience=10,
+        verbose=0,
+        mode='min',
+        restore_best_weights=True
+    )
+    model.fit(X_train, y_train, epochs=params['epoch'], verbose=0, callbacks=[es], validation_data=(X_test, y_test),
+              batch_size=params['batch_size'])
+
+    if binary:
+        y_pred = model.predict(X_test).reshape(-1)
+        y_pred = (y_pred > 0.5).astype(int)
+        result = (y_pred == y_test).mean()
+    else:
+        y_pred = model.predict(X_test)
+        result = (np.argmax(y_pred, axis=1) == np.argmax(y_test, axis=1)).mean()
+
+    result_tr.append(result)
+print(result_tr)
