@@ -24,19 +24,19 @@ print(survey_raw.columns[idx])
 
 #%% Questions 1
 """
-Young (1): age <= 35
-Med (2): 35 < age <= 65
-High (3): 65 < age
+Young (0): age <= 35
+Med (1): 35 < age <= 65
+High (2): 65 < age
 """
 Q300 = 'Question 300: May I ask what age you were on your last birthday? INT: IF NECCESSARY, PROMPT WITH AGE BANDS'
 survey['Q1'] = -1
 
 idx = survey_raw[Q300] == 6
-survey.loc[idx, 'Q1'] = 3
-idx = (survey_raw[Q300] < 6).values * (survey_raw[Q300] > 2).values
 survey.loc[idx, 'Q1'] = 2
-idx = (survey_raw[Q300] <= 2).values
+idx = (survey_raw[Q300] < 6).values * (survey_raw[Q300] > 2).values
 survey.loc[idx, 'Q1'] = 1
+idx = (survey_raw[Q300] <= 2).values
+survey.loc[idx, 'Q1'] = 0
 
 #%% Questions 2
 """
@@ -101,15 +101,15 @@ num_adults = survey_raw[Q420] # except single
 idx = (survey['Q3'] > 0).values * (num_adults > 1).values
 survey.loc[idx, 'Q9'] = 1
 
-# #residents를 3 class로
-survey.loc[survey['Q13'] <= 2, 'Q13'] = 1
-survey.loc[survey['Q13'] > 2, 'Q13'] = 2
+# #residents를 2 class로
+survey.loc[survey['Q13'] <= 2, 'Q13'] = 0
+survey.loc[survey['Q13'] > 2, 'Q13'] = 1
 
 #%% Question 4
 """
 age of building
-new (<=30): 1
-old (>30) : 2
+new (<=30): 0
+old (>30) : 1
 """
 Q4531 = 'Question 4531: Approximately how old is your home?'
 Q453 = 'Question 453: What year was your house built INT ENTER FOR EXAMPLE: 1981- CAPTURE THE FOUR DIGITS'
@@ -125,16 +125,16 @@ survey.loc[new_idx, 'Q4'] = 20
 
 idx = survey['Q4'] >= 30
 bad_idx = survey['Q4'] == -1
-survey.loc[idx,'Q4'] = 2
-survey.loc[~idx,'Q4'] = 1
+survey.loc[idx,'Q4'] = 1
+survey.loc[~idx,'Q4'] = 0
 survey.loc[bad_idx,'Q4'] = -1
 
 #%% Question 5
 """
 floar area
-small: 1
-med: 2
-big: 3
+small: 0
+med: 1
+big: 2
 """
 
 Q6103 = 'Question 6103: What is the approximate floor area of your home?'
@@ -151,9 +151,9 @@ idx = (survey['Q5'] <= 100).values
 idx3 = (survey['Q5'] > 200).values * (survey['Q5'] < 999999999).values
 idx2 = (survey['Q5'] > 100).values * (survey['Q5'] <= 200).values
 
-survey.loc[idx,'Q5'] = 1
-survey.loc[idx2,'Q5'] = 2
-survey.loc[idx3,'Q5'] = 3
+survey.loc[idx,'Q5'] = 0
+survey.loc[idx2,'Q5'] = 1
+survey.loc[idx3,'Q5'] = 2
 survey.loc[bad_idx,'Q5'] = -1
 survey['Q5'] = survey['Q5'].astype(int)
 
@@ -162,34 +162,34 @@ np.unique(survey['Q5'], return_counts=True)
 #%% Question 6
 """
 Energy-efficient light bulb proportion
-1: up to halp
-2: about 3 quarters of more
+0: up to half
+1: about 3 quarters of more
 """
 Q4905 = 'Question 4905: And now considering energy reduction in your home please indicate the approximate proportion of light bulbs which are energy saving (or CFL)?  INT:READ OUT'
 
 # idx = survey_raw[Q4905] <= 3
 idx = survey_raw[Q4905] <= 2
 survey['Q6'] = 0
-survey.loc[idx, 'Q6'] = 1
+survey.loc[idx, 'Q6'] = 0
 # idx = survey_raw[Q4905] >= 4
 idx = survey_raw[Q4905] >= 3
-survey.loc[idx, 'Q6'] = 2
+survey.loc[idx, 'Q6'] = 1
 
 #%% Question 7
 """
 House type
-Free : 1
-Connected: 2
+Free : 0
+Connected: 1
 """
 
 Q4905 = 'Question 450: I would now like to ask some questions about your home.  Which best describes your home?'
 survey['Q7'] = -1
 
-survey.loc[survey_raw[Q4905] == 3, 'Q7'] = 1
-survey.loc[survey_raw[Q4905] == 5, 'Q7'] = 1
+survey.loc[survey_raw[Q4905] == 3, 'Q7'] = 0
+survey.loc[survey_raw[Q4905] == 5, 'Q7'] = 0
 
-survey.loc[survey_raw[Q4905] == 2, 'Q7'] = 2
-survey.loc[survey_raw[Q4905] == 4, 'Q7'] = 2
+survey.loc[survey_raw[Q4905] == 2, 'Q7'] = 1
+survey.loc[survey_raw[Q4905] == 4, 'Q7'] = 1
 
 # others
 survey.loc[survey['Q7'] == 0,'Q7'] = -1
@@ -208,29 +208,29 @@ survey.loc[idx, 'Q10'] = 1
 #%% Question 11
 """
 Number of bedrooms
-very low (1): <=2
-low (2): ==3
-high (3): ==4
-very high(4): > 4
+very low (0): <=2
+low (1): ==3
+high (2): ==4
+very high(3): > 4
 """
 Q460 = 'Question 460: How many bedrooms are there in your home'
 survey['Q11'] = 0
 
 # very high
 idx = survey_raw[Q460] > 4
-survey.loc[idx, 'Q11'] = 4
+survey.loc[idx, 'Q11'] = 3
 
 # high
 idx = survey_raw[Q460] == 4
-survey.loc[idx, 'Q11'] = 3
+survey.loc[idx, 'Q11'] = 2
 
 # low
 idx = survey_raw[Q460] == 3
-survey.loc[idx, 'Q11'] = 2
+survey.loc[idx, 'Q11'] = 1
 
 # very low
 idx = survey_raw[Q460] <= 2
-survey.loc[idx, 'Q11'] = 1
+survey.loc[idx, 'Q11'] = 0
 
 bad_idx = survey_raw[Q460] == 6
 survey.loc[bad_idx, 'Q11'] = -1
@@ -281,26 +281,26 @@ idx = survey['Q12'] <= 8
 idx2 = (survey['Q12'] > 8) * (survey['Q12'] <= 11)
 idx3 = survey['Q12'] > 11
 
-survey.loc[idx, 'Q12'] = 1
-survey.loc[idx2, 'Q12'] = 2
-survey.loc[idx3, 'Q12'] = 3
+survey.loc[idx, 'Q12'] = 0
+survey.loc[idx2, 'Q12'] = 1
+survey.loc[idx3, 'Q12'] = 2
 
 #%% Questions 14
 """
-1: AB
-2: C1 C2
-3: DE
+0: AB
+1: C1 C2
+2: DE
 """
 Q401 = 'Question 401: SOCIAL CLASS Interviewer, Respondent said that occupation of chief income earner was.... <CLASS> Please code'
 survey['Q14'] = -1
 idx = survey_raw[Q401] == 1
-survey.loc[idx, 'Q14'] = 1
+survey.loc[idx, 'Q14'] = 0
 
 idx = (survey_raw[Q401] == 2).values + (survey_raw[Q401] == 3).values
-survey.loc[idx, 'Q14'] = 2
+survey.loc[idx, 'Q14'] = 1
 
 idx = (survey_raw[Q401] == 4).values
-survey.loc[idx, 'Q14'] = 3
+survey.loc[idx, 'Q14'] = 2
 
 #%% Questions 15
 """
@@ -321,4 +321,4 @@ sorted_col = ['Q'+str(i) for i in range(1,16)]
 survey = survey.reindex(sorted_col, axis=1)
 
 #%% save
-survey.to_csv('data/survey_processed_0216.csv',index=True)
+survey.to_csv('data/survey_processed_0222.csv',index=True)
