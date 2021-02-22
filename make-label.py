@@ -192,7 +192,7 @@ survey.loc[survey_raw[Q4905] == 2, 'Q7'] = 1
 survey.loc[survey_raw[Q4905] == 4, 'Q7'] = 1
 
 # others
-survey.loc[survey['Q7'] == 0,'Q7'] = -1
+survey.loc[(survey_raw[Q4905] <2).values * (survey_raw[Q4905] >5).values,'Q7'] = -1
 
 #%% Question 10
 """
