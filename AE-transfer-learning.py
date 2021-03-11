@@ -283,9 +283,12 @@ plt.show()
 #%% 예측값 확인
 question_pred_result = dict()
 GNT_list = dict()
-pred_result = dict()
-n_iter = 50
+from collections import defaultdict
+histories = defaultdict(list)
+
+n_iter = 30
 for question_number in range(1, 7):
+    pred_result = dict()
     for iters in range(n_iter):
         label_raw = labels[question_number-1].copy()
         label = to_categorical(label_raw, dtype=int)
@@ -300,7 +303,7 @@ for question_number in range(1, 7):
                     Flatten(),
                     Dense(32, activation='relu'),
                     ])
-        prediction_layer = Dense(label.shape[1], input_shape=(16,),
+        prediction_layer = Dense(label.shape[1], input_shape=(16,) ,
                                   activation='softmax', use_bias=True)
 
         model = Sequential([encoder, additional_layer, prediction_layer])
@@ -348,10 +351,10 @@ for question_number in range(1, 7):
         history = model.fit(X_train, y_train, epochs=100, verbose=0,
                             callbacks=[es, ls, PredictionCallback(X_test)], validation_data=(X_test, y_test),
                           batch_size=params['batch_size'])
+        histories[question_number].append(history)
         pred_result[iters] = y_preds.copy()
     question_pred_result[question_number] = pred_result
     GNT_list[question_number] = y_test
-
 
 def plot_history(histories, key='loss'):
     for name, history in histories:
@@ -382,13 +385,17 @@ plt.legend()
 plt.show()
 
 #%%
+question_number = 6
+pred_result = question_pred_result[question_number]
+y_test = GNT_list[question_number]
+
 EPOCHS = 100
 font = {'size': 13, 'family':"Malgun godic"}
 matplotlib.rc('font', **font)
 
 tmp_list = []
 for i in range(n_iter):
-    tmp_list.append(np.transpose(np.array(pred_result[i]), (0,2,1)).reshape(EPOCHS,-1))
+    tmp_list.append(np.array(pred_result[i]).reshape(EPOCHS,-1))
 tmp_list = np.array(tmp_list)
 
 # pca
@@ -401,16 +408,16 @@ for i in range(n_iter):
 transformed_result = np.array(transformed_result)
 
 # plot
-GNT = y_test.T.reshape(1, -1)
+GNT = y_test.reshape(1, -1)
 GNT_tr = pca.transform(GNT)
 for iteration in range(n_iter):
     for j in range(EPOCHS):
         plt.plot(transformed_result[iteration][j,0], transformed_result[iteration][j,1],'.',
-                 color = (0,j / EPOCHS,1), markersize = j*2)
+                 color = (0,j / EPOCHS,1), markersize = j / 5)
 plt.plot(GNT_tr[0,0], GNT_tr[0,1],'rx', label='GNT')
 plt.xlabel('PC1')
 plt.ylabel('PC2')
-plt.title('Trajectory of \n prediction result')
+plt.title('{}({}) \nTrajectory of prediction result'.format('Q' + str(question_number), question_list['Q' + str(question_number)]))
 plt.legend()
 plt.show()
 

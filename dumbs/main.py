@@ -10,7 +10,7 @@ font = {'size': 16}
 matplotlib.rc('font', **font)
 
 ## 데이터 로드 및 전처리
-power_df = pd.read_csv('data/power_comb.csv')
+power_df = pd.read_csv('../data/power_comb.csv')
 # 0 to NaN
 power_df[power_df==0] = np.nan
 # power_df = power_df.iloc[:2*24*28,:] # 4주
@@ -68,9 +68,9 @@ for upper_th in np.arange(0.1, 2, 0.1):
     data = np.append(data, proportion.reshape(-1,1), axis=1)
 # features = list(range(48)) + ['mean','med','max','std','mean of evening','proportion']
 ### make label
-label = info['count'].values
+label = info['count'].values.copy()
 label = label.astype(int)
-# label = (label >= 3).astype(int)
+label = (label >= 3).astype(int)
 
 #%% Feature 분석
 results = np.zeros((data.shape[1], 2))
@@ -107,7 +107,9 @@ for train_index, test_index in tqdm(skf.split(data, label)):
     y_true[test_index] = y_test
 
 # plot result
-print(mean_absolute_error(y_true, y_pred))
+y_pred = (y_pred > 0.5).astype(int)
+# print(mean_absolute_error(y_true, y_pred))
+print((y_true == y_pred).mean())
 idx = np.argsort(y_true)
 plt.plot(y_true[idx], label='True')
 plt.plot(y_pred[idx], label='Predicted')
@@ -116,8 +118,6 @@ plt.show()
 
 # plot importance score
 plt.figure(figsize=(6,3))
-plt.xticks(list(range(len(features)))[::4]
-           , features[::4], rotation=30)
 plt.plot(model.feature_importances_)
 plt.show()
 

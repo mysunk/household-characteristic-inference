@@ -4,10 +4,11 @@ os.chdir('../')
 from util_etri import *
 import matplotlib
 import tensorflow as tf
-physical_devices = tf.config.list_physical_devices('GPU')
-tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
+# physical_devices = tf.config.list_physical_devices('GPU')
+# tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
 
-font = {'size': 15}
+import matplotlib
+font = {'size': 16, 'family':"Calibri"}
 matplotlib.rc('font', **font)
 
 
@@ -67,68 +68,75 @@ extra_info = extra_info.iloc[:,~nan_home]
 
 # 1. number of residents
 label_residents = extra_info.loc['popl_num',:].values.copy()
-label_residents[label_residents <=2] = 1
-label_residents[label_residents >2] = 2
+label_residents[label_residents <=2] = 0
+label_residents[label_residents >2] = 1
 
 # 2. number of appliances
 label_appliances = extra_info.loc['appl_num',:].values.copy()
-label_appliances[label_appliances<=6] = 1
-label_appliances[(label_appliances> 6) * (label_appliances <= 8)] = 2
-label_appliances[label_appliances > 8] = 3
+label_appliances[label_appliances<=6] = 0
+label_appliances[(label_appliances> 6) * (label_appliances <= 8)] = 1
+label_appliances[label_appliances > 8] = 2
 
 # 3. have child
-label_child = extra_info.loc['child_include_teen',:].values.copy()
+label_child = extra_info.loc['child_num',:].values.copy()
 label_child[label_child>0] = 1
 
-# 4. single
+# 4. have child include teen
+label_child_w_teen = extra_info.loc['child_include_teen',:].values.copy()
+label_child_w_teen[label_child_w_teen>0] = 1
+
+# 5. single
 label_single = (extra_info.loc['adult_num',:].values == 1) * (extra_info.loc['child_include_teen',:].values == 0)
 label_single = label_single.astype(int)
 
-# 5. area
+# 6. area
 label_area = extra_info.loc['area',:].values.copy()
-label_area[label_area < 20] = 1
-label_area[(label_area >= 20) * (label_area <= 22)] = 2
-label_area[label_area > 22] = 3
+label_area[label_area < 20] = 0
+label_area[(label_area >= 20) * (label_area <= 22)] = 1
+label_area[label_area > 22] = 2
+
+labels = [label_residents, label_appliances, label_child, label_child_w_teen, label_single, label_area]
 
 #%% w/o augmented: RF
 from sklearn.model_selection import StratifiedKFold
 from sklearn.ensemble import RandomForestClassifier
 from tqdm import tqdm
 
-result_rf = []
-for label in [label_residents, label_appliances, label_child, label_single, label_area]:
-    data = data_2d
-    y_pred = np.zeros(label.shape)
-    y_true = np.zeros(label.shape)
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
-    for train_index, test_index in skf.split(data, label):
-        X_train, X_test = data[train_index], data[test_index]
-        y_train, y_test = label[train_index], label[test_index]
-        model = RandomForestClassifier(n_estimators=100, random_state=0, max_features=5, verbose=True,
-                                       n_jobs=-1)
-        model.fit(X_train, y_train)
-        y_pred[test_index] = model.predict(X_test)
-        y_true[test_index] = y_test
+# result_rf = []
+# for label in [label_residents, label_appliances, label_child, label_single, label_area]:
+#     data = data_2d
+#     y_pred = np.zeros(label.shape)
+#     y_true = np.zeros(label.shape)
+#     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
+#     for train_index, test_index in skf.split(data, label):
+#         X_train, X_test = data[train_index], data[test_index]
+#         y_train, y_test = label[train_index], label[test_index]
+#         model = RandomForestClassifier(n_estimators=100, random_state=0, max_features=5, verbose=True,
+#                                        n_jobs=-1)
+#         model.fit(X_train, y_train)
+#         y_pred[test_index] = model.predict(X_test)
+#         y_true[test_index] = y_test
+#
+#     # acc
+#     print((y_pred == y_true).mean())
+#
+#     # uniform guess
+#     v, c = np.unique(label, return_counts=True)
+#     print(c.max() / c.sum())
+#
+#     result_rf.append((y_pred == y_true).mean())
 
-    # acc
-    print((y_pred == y_true).mean())
 
-    # uniform guess
-    v, c = np.unique(label, return_counts=True)
-    print(c.max() / c.sum())
+#%% CNN parameter tuning
+from hyperopt import hp, tpe, fmin, Trials, STATUS_OK
+from functools import partial
+# from util import train
 
-    result_rf.append((y_pred == y_true).mean())
-
-#%% 저장할 dictionary 선언
 labels = [label_residents, label_appliances, label_child, label_single, label_area]
 
 CNN_result_dict = dict()
 CNN_param_dict = dict()
-
-#%% CNN 학습
-from hyperopt import hp, tpe, fmin, Trials, STATUS_OK
-from functools import partial
-from util import train
+# result_dict_1 = dict()
 
 space = {
     'lr': hp.loguniform('lr', np.log(1e-5), np.log(0.3)),
@@ -136,16 +144,31 @@ space = {
     'batch_size': hp.quniform('batch_size', 32, 32*20, 32),
     'lambda': hp.loguniform('lambda', np.log(1e-5), np.log(1)),
     'epsilon': hp.loguniform('epsilon', np.log(1e-5), np.log(1)),
+    'C': hp.uniform('C', 0, 1)
 }
 
-for question_number in range(5):
-    bayes_trials = Trials()
-    tuning_algo = tpe.suggest
-    objective = partial(train, data = data_2d, label_ref = labels[question_number], i = question_number)
-    result = fmin(fn=objective, space=space, algo=tuning_algo, max_evals=30, trials=bayes_trials)
-    trials = sorted(bayes_trials.results, key=lambda k: k['loss'])
-    CNN_param_dict[question_number] = trials[0]['params']
-    CNN_result_dict[question_number] = trials[0]['loss']
+N_ITER = 10
+result_dict_1 = dict()
+with tf.device('/cpu:0'):
+    for classifier in ['softmax']:
+        for question_number in [3]:
+            bayes_trials = Trials()
+            tuning_algo = tpe.suggest
+            objective = partial(train, classifier = classifier, data = data_2d, label_ref = labels[question_number], i = question_number, save_pred = False)
+            result = fmin(fn=objective, space=space, algo=tuning_algo, max_evals=N_ITER, trials=bayes_trials)
+            trials = sorted(bayes_trials.results, key=lambda k: k['loss'])
+            CNN_param_dict[question_number] = trials[0]['params']
+            CNN_result_dict[question_number] = trials[0]['loss']
+
+        result_dict_1[classifier + '_result'] = CNN_result_dict
+        result_dict_1[classifier + '_param'] = CNN_param_dict
+
+#%% CNN training
+for classifier in ['softmax']:
+    for i in tqdm([3]):
+        train_result = train(params = result_dict_1[classifier + '_param'][i], classifier=classifier, data=data_2d, label_ref=labels[i], i=i,
+                             save_model=False, save_pred_name = 'preds_w_pretraining_3')
+        print(train_result['loss'])
 
 #%% transfer learning
 from tensorflow.keras.models import Sequential
@@ -157,88 +180,149 @@ from tensorflow.keras import initializers
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras import regularizers
 import tensorflow.keras.backend as K
+from util import svm_loss, load_obj
 
-# question_list = [13, 12, 3, 8, 5]
-# models = []
-# for q in [3]:
-#     models.append(tf.keras.models.load_model(f"models/model_Q_{q}.h5")) # number of residents
+# params = {
+#     'batch_size': 128,
+#     'lr':0.001,
+#     'epsilon': 0.0001,
+#     'lambda': 0.1,
+#     'epoch': 30,
+#     'C':1.0
+# }
+from collections import defaultdict
+y_preds = defaultdict(list)
+with tf.device('/cpu:0'):
+    for iter in range(10):
+        for classifier in ['softmax']:
+            result_tr = []
+            for i, question_number in tqdm(enumerate([8])):
+                i = 3
+                result_dict = load_obj('param_and_result_0223')
+                params = result_dict[classifier + '_param'][question_number]
+                params['lr'] = params['lr'] * 0.1
 
-result_tr = []
-for i, question_number in tqdm(enumerate([13, 12, 3, 8, 5])):
-    params = CNN_param_dict[i]
-    params['lr'] = params['lr'] / 10
-    params['epoch'] = 100
+                label = labels[i]
+                label_raw = label.copy()
+                label = to_categorical(label, dtype=int)
+                data = data_2d
+                binary = False
+                if np.all(np.unique(label_raw) == np.array([0, 1])):
+                    binary = True
 
-    label = labels[i]
-    label_raw = label.copy()
-    label = to_categorical(label, dtype=int)
-    data = data_2d
-    binary = False
-    if np.all(np.unique(label_raw) == np.array([0, 1])):
-        binary = True
-        label = label[:, 1]
+                label = label.astype(float)
 
-    label = label.astype(float)
+                from sklearn.model_selection import train_test_split
 
-    from sklearn.model_selection import train_test_split
+                X_train, X_test, y_train, y_test = train_test_split(data, label, test_size=0.2, random_state=0, stratify=label)
+                """ 
+                CNN based feature selection
+                """
+                # reshape
+                X_train = X_train.reshape(-1, 7, 24, 1)
+                X_test = X_test.reshape(-1, 7, 24, 1)
+                base_model = tf.keras.models.load_model(f"models/model_Q_{question_number}_{classifier}.h5",custom_objects=None, compile=False)
+                base_model.trainable = False
 
-    X_train, X_test, y_train, y_test = train_test_split(data, label, test_size=0.2, random_state=0, stratify=label)
-    """ 
-    CNN based feature selection
-    """
-    # reshape
-    X_train = X_train.reshape(-1, 7, 24, 1)
-    X_test = X_test.reshape(-1, 7, 24, 1)
+                model = Sequential()
+                for layer in base_model.layers[:-1]: # go through until last layer
+                    model.add(layer)
 
-    base_model = tf.keras.models.load_model(f"models/model_Q_{question_number}.h5")
-    base_model.trainable = False
+                inputs = tf.keras.Input(shape=(7, 24, 1))
+                # We make sure that the base_model is running in inference mode here,
+                # by passing `training=False`. This is important for fine-tuning, as you will
+                # learn in a few paragraphs.
+                x = model(inputs, training=False)
 
-    model = Sequential()
-    for layer in base_model.layers[:-1]: # go through until last layer
-        model.add(layer)
+                # layer 하나 더 쌓음
+                x = tf.keras.layers.Dense(16, activation='relu')(x)
 
-    inputs = tf.keras.Input(shape=(7, 24, 1))
-    # We make sure that the base_model is running in inference mode here,
-    # by passing `training=False`. This is important for fine-tuning, as you will
-    # learn in a few paragraphs.
-    x = model(inputs, training=False)
+                optimizer = Adam(params['lr'], epsilon=params['epsilon'])
+                if classifier == 'softmax':
+                    x_out = Dense(label.shape[1], input_shape=(16,),
+                                  activation='softmax', use_bias=True)(x)
+                    model = tf.keras.Model(inputs, x_out)
+                    if binary:
+                        model.compile(optimizer=optimizer, loss='binary_crossentropy')
+                    else:
+                        model.compile(optimizer=optimizer, loss='categorical_crossentropy')
+                elif classifier == 'svm':
+                    x_out = Dense(label.shape[1], input_shape=(32,),
+                                  use_bias=False, activation='linear', name='svm')(x)
+                    model = tf.keras.Model(inputs, x_out)
+                    model.compile(optimizer=optimizer, loss=svm_loss(model.get_layer('svm'), params['C']))
 
-    # layer 하나 더 쌓음
-    x = tf.keras.layers.Dense(16, activation='relu')(x)
+                es = EarlyStopping(
+                    monitor='val_loss',
+                    patience=10,
+                    verbose=0,
+                    mode='min',
+                    restore_best_weights=True
+                )
 
-    if binary:
-        x_out = Dense(1, input_shape=(16,),
-                      activation='sigmoid', use_bias=True)(x)
+                class PredictionCallback(tf.keras.callbacks.Callback):
+                    def __init__(self, val):
+                        self.val = val
+
+                    def on_epoch_end(self, epoch, logs={}):
+                        y_pred = self.model.predict(self.val)
+                        # save the result in each training
+                        y_preds[iter].append(y_pred)
+                        # np.save('preds_w_pretraining_3/' + str(epoch), y_pred)
+
+                model.fit(X_train, y_train, epochs=100, verbose=0, callbacks=[es, PredictionCallback(X_test)], validation_data=(X_test, y_test),
+                          batch_size=params['batch_size'])
+
+                y_pred = model.predict(X_test)
+                result = (np.argmax(y_pred, axis=1) == np.argmax(y_test, axis=1)).mean()
+
+                result_tr.append(result)
+            print(result_tr)
+
+#%% pca with prediction results
+from sklearn.decomposition import PCA
+y_preds = []
+for i in range(100):
+    y_pred = np.load('preds_wo_pretraining_3/'+str(i)+'.npy')
+    y_pred = np.ravel(y_pred.T)
+    y_preds.append(y_pred)
+y_preds = np.array(y_preds)
+pca = PCA(n_components=2)
+w2 = pca.fit_transform(y_preds.T)
+for i in range(100):
+    if i != 99:
+        plt.plot(y_preds_tr[i,0], y_preds_tr[i,1],'ro', markersize = 0.15 * i, fillstyle='none')
     else:
-        x_out = Dense(label.shape[1], input_shape=(16,),
-                      activation='softmax', use_bias=True)(x)
-
-    model = tf.keras.Model(inputs, x_out)
-
-    # compile 및 학습
-    optimizer = Adam(params['lr'], epsilon=params['epsilon'])
-    if binary:
-        model.compile(optimizer=optimizer, loss='binary_crossentropy')
+        plt.plot(y_preds_tr[i, 0], y_preds_tr[i, 1], 'ro', markersize=0.15 * i, label = 'pre-trained')
+y_preds = []
+for i in range(100):
+    y_pred = np.load('preds_w_pretraining_3/'+str(i)+'.npy')
+    y_pred = np.ravel(y_pred.T)
+    y_preds.append(y_pred)
+y_preds = np.array(y_preds)
+# pca = PCA(n_components=2)
+y_preds_tr = pca.transform(y_preds.T)
+for i in range(100):
+    if i != 99:
+        plt.plot(y_preds_tr[i,0], y_preds_tr[i,1],'bo', markersize = 0.15 * i, fillstyle='none')
     else:
-        model.compile(optimizer=optimizer, loss='categorical_crossentropy')
+        plt.plot(y_preds_tr[i, 0], y_preds_tr[i, 1], 'bo', markersize=0.15 * i, label = 'w/o pre-trained')
+plt.xlabel('1st component')
+plt.ylabel('2nd component')
+plt.legend()
+plt.show()
 
-    es = EarlyStopping(
-        monitor='val_loss',
-        patience=10,
-        verbose=0,
-        mode='min',
-        restore_best_weights=True
-    )
-    model.fit(X_train, y_train, epochs=params['epoch'], verbose=0, callbacks=[es], validation_data=(X_test, y_test),
-              batch_size=params['batch_size'])
-
-    if binary:
-        y_pred = model.predict(X_test).reshape(-1)
-        y_pred = (y_pred > 0.5).astype(int)
-        result = (y_pred == y_test).mean()
-    else:
-        y_pred = model.predict(X_test)
-        result = (np.argmax(y_pred, axis=1) == np.argmax(y_test, axis=1)).mean()
-
-    result_tr.append(result)
-print(result_tr)
+#%% pca with prediction results
+from sklearn.decomposition import PCA
+# plt.figure()
+pca = PCA(n_components=2)
+w2 = pca.fit_transform(np.array(y_preds[0]).reshape(100,-1))
+GNT = y_test.reshape(1, -1)
+GNT_tr = pca.transform(GNT)
+for iter in range(10):
+    y_preds_tr = pca.transform(np.array(y_preds[iter]).reshape(100,-1))
+    for i in range(100):
+        plt.plot(y_preds_tr[i,0], y_preds_tr[i,1],'rx')
+plt.plot(GNT_tr[0,0], GNT_tr[0,1],'bx', label = 'GNT')
+plt.legend()
+plt.show()
