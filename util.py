@@ -1,6 +1,9 @@
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 
+tf.compat.v1.set_random_seed(42)
+np.random.seed(42)
 
 def load_info(path):
     info = pd.read_csv(path)
@@ -67,34 +70,35 @@ from tensorflow.keras import initializers
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras import regularizers
 import tensorflow.keras.backend as K
-def baseline_model(params, binary, label):
+
+
+def CNN_softmax(params, binary, label):
+
+    '''
+
+    Parameters
+    ----------
+    params: DNN learning parameters
+    binary: binary or not
+    label: y
+
+    Returns
+    -------
+    model: compiled DNN model
+
+    '''
 
     x_input = Input(shape=(7, 24, 1))
-    x = Conv2D(8, kernel_size=(2, 3), activation='relu', input_shape=(7, 24, 1),
-           kernel_initializer=initializers.RandomNormal(stddev=0.01, mean=0),
-           bias_initializer=initializers.Ones())(x_input)
-    x = Conv2D(16, kernel_size=(3, 3), activation='relu', kernel_initializer=initializers.RandomNormal(stddev=0.01, mean=0),
-           bias_initializer=initializers.Ones())(x)
+    x = Conv2D(8, kernel_size=(2, 3), activation='relu', input_shape=(7, 24, 1))(x_input)
+    x = Conv2D(16, kernel_size=(3, 3), activation='relu')(x)
     x = MaxPool2D()(x)
     x = Dropout(0.1)(x)
     x = Flatten()(x)
-    x = Dense(32, input_shape=(320,), kernel_initializer=initializers.RandomNormal(stddev=0.01, mean=0),
-           bias_initializer=initializers.Ones())(x)
+    x = Dense(32, input_shape=(320,))(x)
 
     # Add svm layer
-    if binary:
-        # x_out = Dense(1, input_shape=(32,), kernel_initializer=initializers.RandomNormal(stddev=0.01, mean=0),
-        #    bias_initializer=initializers.Ones(),
-        #               activation='linear',use_bias=True, name='svm', kernel_regularizer=regularizers.l2(params['lambda']))(x)
-        x_out = Dense(1, input_shape=(32,),
-                      activation='sigmoid', use_bias=True)(x)
-        # x_out = tf.math.sign(x_out)
-    else:
-        # x_out = Dense(label.shape[1], input_shape=(32,),kernel_initializer=initializers.RandomNormal(stddev=0.01, mean=0),
-        #    bias_initializer=initializers.Ones(),
-        #               use_bias=True, activation='linear', name='svm', kernel_regularizer=regularizers.l2(params['lambda']))(x)
-        x_out = Dense(label.shape[1], input_shape=(32,),
-                      activation='softmax', use_bias=True)(x)
+    x_out = Dense(label.shape[1], input_shape=(32,),
+                  activation='softmax', use_bias=True)(x)
 
     model = Model(x_input, x_out)
     optimizer = Adam(params['lr'], epsilon=params['epsilon'])
@@ -106,6 +110,40 @@ def baseline_model(params, binary, label):
 
     return model
 
+def svm_loss(layer, C):
+    weights = layer.weights[0]
+    weights_tf = tf.convert_to_tensor(weights)
+
+    def categorical_hinge_loss(y_true, y_pred):
+        pos = K.sum(y_true * y_pred, axis=-1)
+        neg = K.max((1.0 - y_true) * y_pred, axis=-1)
+        hinge_loss = K.mean(K.maximum(0.0, neg - pos + 1), axis=-1)
+        regularization_loss = C * (tf.reduce_sum(tf.square(weights_tf)))
+        return regularization_loss + 0.5 * hinge_loss
+
+    return categorical_hinge_loss
+
+import tensorflow as tf
+def CNN_svm(params, binary, label):
+    x_input = Input(shape=(7, 24, 1))
+    x = Conv2D(8, kernel_size=(2, 3), activation='relu', input_shape=(7, 24, 1))(x_input)
+    x = Conv2D(16, kernel_size=(3, 3), activation='relu')(x)
+    x = MaxPool2D()(x)
+    x = Dropout(0.1)(x)
+    x = Flatten()(x)
+    x = Dense(32, input_shape=(320,))(x)
+
+    # Add svm layer
+    x_out = Dense(label.shape[1], input_shape=(32,),
+       use_bias=False, activation='linear', name='svm')(x)
+
+    model = Model(x_input, x_out)
+    optimizer = Adam(params['lr'], epsilon=params['epsilon'])
+    # optimizer = tf.keras.optimizers.RMSprop(lr=2e-3, decay=1e-5)
+    model.compile(optimizer=optimizer, loss=svm_loss(model.get_layer('svm'), params['C']))
+
+    return model
+
 def make_param_int(param, key_names):
     for key, value in param.items():
         if key in key_names:
@@ -114,20 +152,30 @@ def make_param_int(param, key_names):
 
 from hyperopt import STATUS_OK
 from sklearn.model_selection import train_test_split
-def train(params, data, label_ref, i = 1, save_model = False, random_state = 0):
+
+class PredictionCallback(tf.keras.callbacks.Callback):
+    def __init__(self, val, save_pred_name):
+        self.val = val
+        self.save_pred_name = save_pred_name
+
+    def on_epoch_end(self, epoch, logs={}):
+        y_pred = self.model.predict(self.val)
+        # save the result in each training
+        if self.save_pred_name:
+            np.save(self.save_pred_name + '/'+str(epoch), y_pred)
+
+def train(params, data, label_ref, classifier, i = 1, save_model = False, random_state = 0, save_pred_name = None):
+    # print(classifier)
     params = make_param_int(params, ['batch_size'])
 
-    label_ref = label_ref.astype(float)
-    binary = False
     label = to_categorical(label_ref.copy(), dtype=int)
     # binary or multi
-    if np.all(np.unique(label_ref) == np.array([0, 1])):
+    if label.shape[1] == 2:
         binary = True
-        label = label[:, 1]
+    else:
+        binary = False
 
-    # label = label.astype(float)
-    # for svm
-    # label[label == 0] = -1
+    label = label.astype(float)
 
     X_train, X_test, y_train, y_test = train_test_split(data, label, test_size = 0.2, random_state = random_state, stratify = label)
     """ 
@@ -136,7 +184,11 @@ def train(params, data, label_ref, i = 1, save_model = False, random_state = 0):
     # reshape
     X_train = X_train.reshape(-1, 7, 24, 1)
     X_test = X_test.reshape(-1, 7, 24, 1)
-    model = baseline_model(params, binary, label)
+    if classifier == 'softmax':
+        model = CNN_softmax(params, binary, label)
+    elif classifier == 'svm':
+        model = CNN_svm(params, binary, label)
+
     es = EarlyStopping(
         monitor='val_loss',
         patience=10,
@@ -144,19 +196,26 @@ def train(params, data, label_ref, i = 1, save_model = False, random_state = 0):
         mode='min',
         restore_best_weights=True
     )
-    model.fit(X_train, y_train, epochs=params['epoch'], verbose=0, callbacks=[es], validation_data=(X_test, y_test),
+
+    model.fit(X_train, y_train, epochs=1000, verbose=0, callbacks=[es, PredictionCallback(X_test, save_pred_name)], validation_data=(X_test, y_test),
               batch_size=params['batch_size'])
 
     if save_model:
-        model.save("models/model_Q_" + str(i) + '.h5')
+        model.save("models/model_Q_" + str(i) + f'_{classifier}.h5')
 
-    if binary:
-        y_pred = model.predict(X_test).reshape(-1)
-        # print(y_pred)
-        # y_pred = np.sign(y_pred)
-        y_pred = (y_pred > 0.5).astype(int)
-        result = (y_pred == y_test).mean()
-    else:
-        y_pred = model.predict(X_test)
-        result = (np.argmax(y_pred, axis=1) == np.argmax(y_test, axis=1)).mean()
-    return {'loss': -result, 'params': params, 'status': STATUS_OK}
+    y_pred = model.predict(X_test)
+    # print(y_pred)
+    result = (np.argmax(y_pred, axis=1) == np.argmax(y_test, axis=1)).mean()
+
+    return {'loss': -result, 'params': params, 'status': STATUS_OK, 'model':model}
+
+import pickle
+def save_obj(obj, name):
+    with open('results/'+ name + '.pkl', 'wb') as f:
+        pickle.dump(obj, f, pickle.HIGHEST_PROTOCOL)
+
+def load_obj(name):
+    with open('results/' + name + '.pkl', 'rb') as f:
+        trials = pickle.load(f)
+        # trials = sorted(trials, key=lambda k: k['loss'])
+        return trials
