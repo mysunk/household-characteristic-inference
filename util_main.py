@@ -486,3 +486,50 @@ def plot_pred_result(question_list, histories, question_pred_result, GNT_list, o
                                                                     question_list[QUESTION]))
         plt.legend()
         plt.show()
+
+
+def plot_pred_result_v2(question_list, histories, question_pred_result, GNT_list, option, metric,  EPOCH_SIZE, N_TRIAL):
+    from sklearn.decomposition import PCA
+
+    for QUESTION in question_list.keys():
+
+        pred_result = question_pred_result[QUESTION]
+        y_test = GNT_list[QUESTION]
+
+        if option == 'all':
+            font = {'size': 13}
+            matplotlib.rc('font', **font)
+
+            tmp_list = []
+            for i in range(N_TRIAL):
+                tmp_list.append(np.array(pred_result[i]).reshape(EPOCH_SIZE, -1))
+            tmp_list = np.array(tmp_list)
+
+            # pca
+            pca = PCA(n_components=2)
+            pca.fit(tmp_list[0])
+            transformed_result = []
+            for i in range(N_TRIAL):
+                transformed_result.append(pca.transform(tmp_list[i]))
+            transformed_result = np.array(transformed_result)
+
+            # plot
+            for iteration in range(N_TRIAL):
+                print(iteration)
+                for j in range(EPOCH_SIZE):
+                    if iteration <N_TRIAL / 2:
+                        color = (0, j / EPOCH_SIZE, 1)
+                    else:
+                        color = (j / EPOCH_SIZE, 1, 0)
+                    plt.plot(transformed_result[iteration][j, 0], transformed_result[iteration][j, 1], '.',
+                             color=color, markersize=j / EPOCH_SIZE * 15)
+
+        GNT = y_test.reshape(1, -1)
+        GNT_tr = pca.transform(GNT)
+        plt.plot(GNT_tr[0, 0], GNT_tr[0, 1], 'rx', label='GNT')
+        plt.xlabel('PC1')
+        plt.ylabel('PC2')
+        plt.title('{}({}) \nTrajectory of prediction result'.format(QUESTION,
+                                                                    question_list[QUESTION]))
+        plt.legend()
+        plt.show()
