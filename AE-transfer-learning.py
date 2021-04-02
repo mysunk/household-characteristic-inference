@@ -11,10 +11,7 @@ tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
 # -------------------
 # 데이터 로드
 # -------------------
-
-data_path = 'D:/GITHUB/python_projects/etri-load-preprocessing/'
-
-def load_energy(data_p, start_date, end_date, additional = None):
+def load_energy(data_p, start_date, end_date, additional=None):
     data_raw = pd.read_csv(data_p, low_memory=False, dtype={
         'Time': str,
         'Season': str,
@@ -68,7 +65,7 @@ data_target_p = 'D:/ISP/8. 과제/2020 ETRI/data/label_data.csv'
 
 # data
 data_source = load_energy(data_source_p, start_date, end_date)
-data_target = load_energy(data_target_p, start_date, end_date, additional = True)
+data_target = load_energy(data_target_p, start_date, end_date, additional=True)
 
 # label
 def load_extra_info(idx):
@@ -89,20 +86,20 @@ def load_extra_info(idx):
     extra_info = extra_info.astype(int)
     extra_info.index = ['area',
                         'ap_1', 'ap_2', 'ap_3', 'ap_4', 'ap_5', 'ap_6',
-                        'ap_7', 'ap_8', 'ap_9','ap_10', 'ap_11',
+                        'ap_7', 'ap_8', 'ap_9', 'ap_10', 'ap_11',
                         'm_0', 'm_10', 'm_20', 'm_30', 'm_40', 'm_50', 'm_60', 'm_70',
                         'w_0', 'w_10', 'w_20', 'w_30', 'w_40', 'w_50', 'w_60', 'w_70',
-                        'income_type','work_type']
+                        'income_type', 'work_type']
     extra_info.loc['appl_num', :] = extra_info.loc['ap_1':'ap_11', :].sum(axis=0)
     extra_info.loc['popl_num', :] = extra_info.loc['m_0':'w_70', :].sum(axis=0)
     extra_info.loc['adult_num', :] = (
-                extra_info.loc['m_30':'m_70', :].values + extra_info.loc['w_30':'w_70', :].values).sum(axis=0)
+            extra_info.loc['m_30':'m_70', :].values + extra_info.loc['w_30':'w_70', :].values).sum(axis=0)
     extra_info.loc['erderly_num', :] = (
-                extra_info.loc['m_60':'m_70', :].values + extra_info.loc['w_60':'w_70', :].values).sum(axis=0)
+            extra_info.loc['m_60':'m_70', :].values + extra_info.loc['w_60':'w_70', :].values).sum(axis=0)
     extra_info.loc['child_num', :] = extra_info.loc['m_0', :].values + extra_info.loc['w_0', :].values
     extra_info.loc['teen_num', :] = extra_info.loc['m_10', :].values + extra_info.loc['w_10', :].values
     extra_info.loc['child_include_teen', :] = (
-                extra_info.loc['m_0':'m_10', :].values + extra_info.loc['w_0':'w_10', :].values).sum(axis=0)
+            extra_info.loc['m_0':'m_10', :].values + extra_info.loc['w_0':'w_10', :].values).sum(axis=0)
     extra_info.loc['male_num', :] = extra_info.loc['m_0':'m_70', :].sum(axis=0)
     extra_info.loc['female_num', :] = extra_info.loc['w_0':'w_70', :].sum(axis=0)
     extra_info.loc['income_solo', :] = (extra_info.loc['income_type', :] == 2).astype(int)
@@ -118,8 +115,8 @@ extra_info = load_extra_info(idx=data_target.columns).astype(int)
 
 # make 3d data
 def dimension_reduction(data):
-    data_3d = data.reshape(-1, 24*7, data.shape[1]) # day, hour, home
-    data_3d = data_3d.transpose(2,0,1)
+    data_3d = data.reshape(-1, 24 * 7, data.shape[1])  # day, hour, home
+    data_3d = data_3d.transpose(2, 0, 1)
     data_2d = np.nanmean(data_3d, axis=1)
     return data_2d
 
@@ -131,33 +128,33 @@ nan_home = np.any(pd.isnull(data_source), axis=1)
 data_source = data_source[~nan_home, :]
 nan_home = np.any(pd.isnull(data_target), axis=1)
 data_target = data_target[~nan_home, :]
-extra_info = extra_info.iloc[:,~nan_home]
+extra_info = extra_info.iloc[:, ~nan_home]
 
 # 1. number of residents
-label_residents = extra_info.loc['popl_num',:].values.copy()
-label_residents[label_residents <=2] = 0
-label_residents[label_residents >2] = 1
+label_residents = extra_info.loc['popl_num', :].values.copy()
+label_residents[label_residents <= 2] = 0
+label_residents[label_residents > 2] = 1
 
 # 2. number of appliances
-label_appliances = extra_info.loc['appl_num',:].values.copy()
-label_appliances[label_appliances<=6] = 0
-label_appliances[(label_appliances> 6) * (label_appliances <= 8)] = 1
+label_appliances = extra_info.loc['appl_num', :].values.copy()
+label_appliances[label_appliances <= 6] = 0
+label_appliances[(label_appliances > 6) * (label_appliances <= 8)] = 1
 label_appliances[label_appliances > 8] = 2
 
 # 3. have child
-label_child = extra_info.loc['child_num',:].values.copy()
-label_child[label_child>0] = 1
+label_child = extra_info.loc['child_num', :].values.copy()
+label_child[label_child > 0] = 1
 
 # 4. have child include teen
-label_child_w_teen = extra_info.loc['child_include_teen',:].values.copy()
-label_child_w_teen[label_child_w_teen>0] = 1
+label_child_w_teen = extra_info.loc['child_include_teen', :].values.copy()
+label_child_w_teen[label_child_w_teen > 0] = 1
 
 # 5. single
-label_single = (extra_info.loc['adult_num',:].values == 1) * (extra_info.loc['child_include_teen',:].values == 0)
+label_single = (extra_info.loc['adult_num', :].values == 1) * (extra_info.loc['child_include_teen', :].values == 0)
 label_single = label_single.astype(int)
 
 # 6. area
-label_area = extra_info.loc['area',:].values.copy()
+label_area = extra_info.loc['area', :].values.copy()
 label_area[label_area < 20] = 0
 label_area[(label_area >= 20) * (label_area <= 22)] = 1
 label_area[label_area > 22] = 2
@@ -172,6 +169,7 @@ question_list = {
     'Q5': 'Is single',
     'Q6': 'Floor area'
 }
+
 
 #%%
 # -------------------
@@ -281,6 +279,7 @@ plt.legend()
 plt.show()
 
 #%% 예측값 확인
+EPOCHS = 100
 question_pred_result = dict()
 GNT_list = dict()
 from collections import defaultdict
@@ -348,7 +347,7 @@ for question_number in range(1, 7):
         else:
             model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
-        history = model.fit(X_train, y_train, epochs=100, verbose=0,
+        history = model.fit(X_train, y_train, epochs=EPOCHS, verbose=0,
                             callbacks=[es, ls, PredictionCallback(X_test)], validation_data=(X_test, y_test),
                           batch_size=params['batch_size'])
         histories[question_number].append(history)
@@ -356,6 +355,7 @@ for question_number in range(1, 7):
     question_pred_result[question_number] = pred_result
     GNT_list[question_number] = y_test
 
+#%% history 분석
 def plot_history(histories, key='loss'):
     for name, history in histories:
         val = plt.plot(history.epoch, history.history['val_' + key],
@@ -375,56 +375,123 @@ def plot_history(histories, key='loss'):
     plt.ylabel(key)
     plt.xlim([0, max(history.epoch)])
 
-plt.subplot(2,1,1)
-idx = np.argmin(history.history['val_loss'])
-plt.title('{}({}) loss:{:.2f}, acc:{:.2f} '.format('Q' + str(question_number), question_list['Q' + str(question_number)],history.history['val_loss'][idx], history.history['val_accuracy'][idx]))
-plot_history([('', history)], key = 'loss')
-plt.subplot(2,1,2)
-plot_history([('', history)], key = 'accuracy')
-plt.legend()
-plt.show()
+metric = 'loss'
+# option = 'accuracy'
 
-#%%
-question_number = 6
-pred_result = question_pred_result[question_number]
-y_test = GNT_list[question_number]
+for question_number in range(1, 7):
+    losses, acces = [], []
+    for i in range(30):
+        loss = np.min(histories[question_number][i].history['val_loss'])
+        acc = np.max(histories[question_number][i].history['val_accuracy'])
+        losses.append(loss)
+        acces.append(acc)
+    if metric == 'loss':
+        best_history = np.argmin(losses)
+    else:
+        best_history = np.argmax(acces)
+    history = histories[question_number][best_history]
+    baseline = np.max(GNT_list[question_number].mean(axis=0))
+    plt.subplot(2,1,1)
+    if metric == 'loss':
+        idx = np.argmin(history.history['val_loss'])
+    else:
+        idx = np.argmax(history.history['val_accuracy'])
 
+    plt.title('{}({}) loss:{:.2f}, acc:{:.2f} '.format('Q' + str(question_number), question_list['Q' + str(question_number)],history.history['val_loss'][idx], history.history['val_accuracy'][idx]))
+    plot_history([('', history)], key = 'loss')
+    plt.subplot(2,1,2)
+    plot_history([('', history)], key = 'accuracy')
+    plt.axhline(y = baseline, color = 'r', linestyle = ':', label='baseline')
+    plt.legend()
+    plt.show()
+
+#%% prediction 결과 분석
+option = 'best'
+# option = 'all'
+metric = 'loss'
+# metric = 'accuracy'
 EPOCHS = 100
-font = {'size': 13, 'family':"Malgun godic"}
-matplotlib.rc('font', **font)
 
-tmp_list = []
-for i in range(n_iter):
-    tmp_list.append(np.array(pred_result[i]).reshape(EPOCHS,-1))
-tmp_list = np.array(tmp_list)
+for question_number in range(1, 7):
 
-# pca
-from sklearn.decomposition import PCA
-pca = PCA(n_components=2)
-pca.fit(tmp_list[0])
-transformed_result = []
-for i in range(n_iter):
-    transformed_result.append(pca.transform(tmp_list[i]))
-transformed_result = np.array(transformed_result)
+    pred_result = question_pred_result[question_number]
+    y_test = GNT_list[question_number]
 
-# plot
-GNT = y_test.reshape(1, -1)
-GNT_tr = pca.transform(GNT)
-for iteration in range(n_iter):
-    for j in range(EPOCHS):
-        plt.plot(transformed_result[iteration][j,0], transformed_result[iteration][j,1],'.',
-                 color = (0,j / EPOCHS,1), markersize = j / 5)
-plt.plot(GNT_tr[0,0], GNT_tr[0,1],'rx', label='GNT')
-plt.xlabel('PC1')
-plt.ylabel('PC2')
-plt.title('{}({}) \nTrajectory of prediction result'.format('Q' + str(question_number), question_list['Q' + str(question_number)]))
-plt.legend()
-plt.show()
+    if option == 'all':
+        font = {'size': 13, 'family':"Malgun godic"}
+        matplotlib.rc('font', **font)
 
-#%%
-for i in range(10):
-    for j in range(100):
-        print((np.argmax(pred_result[i][j], axis=1) == 1).mean())
+        tmp_list = []
+        for i in range(n_iter):
+            tmp_list.append(np.array(pred_result[i]).reshape(EPOCHS,-1))
+        tmp_list = np.array(tmp_list)
+
+        # pca
+        from sklearn.decomposition import PCA
+        pca = PCA(n_components=2)
+        pca.fit(tmp_list[0])
+        transformed_result = []
+        for i in range(n_iter):
+            transformed_result.append(pca.transform(tmp_list[i]))
+        transformed_result = np.array(transformed_result)
+
+        # plot
+        GNT = y_test.reshape(1, -1)
+        GNT_tr = pca.transform(GNT)
+        for iteration in range(n_iter):
+            for j in range(EPOCHS):
+                plt.plot(transformed_result[iteration][j,0], transformed_result[iteration][j,1],'.',
+                         color = (0,j / EPOCHS,1), markersize = j / 5)
+        plt.plot(GNT_tr[0,0], GNT_tr[0,1],'rx', label='GNT')
+        plt.xlabel('PC1')
+        plt.ylabel('PC2')
+        plt.title('{}({}) \nTrajectory of prediction result'.format('Q' + str(question_number), question_list['Q' + str(question_number)]))
+        plt.legend()
+        plt.show()
+    else:
+        losses, acces = [], []
+        for i in range(n_iter):
+            loss = np.min(histories[question_number][i].history['val_loss'])
+            acc = np.max(histories[question_number][i].history['val_accuracy'])
+            losses.append(loss)
+            acces.append(acc)
+        if metric == 'loss':
+            best_history = np.argmin(losses)
+        else:
+            best_history = np.argmax(acces)
+
+        font = {'size': 13, 'family': "Malgun godic"}
+        matplotlib.rc('font', **font)
+
+        tmp_list = []
+        for i in range(best_history, best_history+1):
+            tmp_list.append(np.array(pred_result[i]).reshape(EPOCHS, -1))
+        tmp_list = np.array(tmp_list)
+
+        # pca
+        from sklearn.decomposition import PCA
+
+        pca = PCA(n_components=2)
+        pca.fit(tmp_list[0])
+        transformed_result = []
+        for i in range(1):
+            transformed_result.append(pca.transform(tmp_list[i]))
+        transformed_result = np.array(transformed_result)
+
+        # plot
+        GNT = y_test.reshape(1, -1)
+        GNT_tr = pca.transform(GNT)
+        for iteration in range(1):
+            for j in range(EPOCHS):
+                plt.plot(transformed_result[iteration][j, 0], transformed_result[iteration][j, 1], '.',
+                         color=(0, j / EPOCHS, 1), markersize=j / 5)
+        plt.plot(GNT_tr[0, 0], GNT_tr[0, 1], 'rx', label='GNT')
+        plt.xlabel('PC1')
+        plt.ylabel('PC2')
+        plt.title('{}({}) \nTrajectory of prediction result'.format('Q' + str(question_number),
+                                                                    question_list['Q' + str(question_number)]))
+        plt.legend()
+        plt.show()
 
 #%% pca coefficient
 plt.plot(pca.components_.T)
