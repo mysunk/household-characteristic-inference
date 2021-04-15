@@ -1,11 +1,9 @@
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import mean_absolute_error
-import pandas as pd
-import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
-from util import *
+from module.util import *
 font = {'size': 16}
 matplotlib.rc('font', **font)
 

@@ -1,8 +1,6 @@
-import pandas as pd
-import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
-from util import *
+from module.util import *
 font = {'size': 16, 'family':"NanumGothic"}
 matplotlib.rc('font', **font)
 

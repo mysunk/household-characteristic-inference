@@ -3,18 +3,19 @@
 # Experiment 2. Typical transfer learning
 # ----------------------------------------------------------------------------------------------------------
 
-import numpy as np
-import pandas as pd
 import tensorflow as tf
 import matplotlib
-import argparse
 import warnings
 
 font = {'size': 16, 'family': "DejaVu"}
 matplotlib.rc('font', **font)
 
-physical_devices = tf.config.list_physical_devices('GPU')
-tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
+# physical_devices = tf.config.list_physical_devices('GPU')
+# tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
+
+# tmp configure
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 warnings.filterwarnings(action='ignore')
 
@@ -25,7 +26,7 @@ warnings.filterwarnings(action='ignore')
 # args = parser.parse_args()
 
 # %% load dataset
-from util_main import load_ETRI
+from module.util_main import load_ETRI
 
 ETRI_question_list = {
     'Q1': '# of residents',
@@ -43,7 +44,7 @@ ETRI_data_dict, ETRI_label_dict = load_ETRI(option='target')
 ETRI_data_ul = load_ETRI(option='source')
 
 # load CER dataset
-from util_main import load_CER
+from module.util_main import load_CER
 
 CER_question_list = {
     'Q1': 'Age of building',
@@ -83,17 +84,17 @@ question_pair = {
 #%% source model 학습
 
 ## 학습 parameter
-LEARNING_RATE = 1e-4
+LEARNING_RATE_SOURCE = 1e-4
 LR_DECAY_RATE = tf.math.exp(-0.1)
-DECAY_TH = 40
+DECAY_TH = 100
 BATCH_SIZE = 128
-EPOCH_SIZE = 10
+EPOCH_SIZE = 1000
 
 from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
-from util_main import CNN
+from module.util_main import CNN
 from tqdm import tqdm
-from tensorflow.keras.optimizers import Adam, SGD
+from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping
 
 model_list_source = dict()
@@ -127,7 +128,7 @@ for QUESTION_T in tqdm(ETRI_question_list.keys()):
         return lr if epoch < DECAY_TH else lr * LR_DECAY_RATE
 
     ls = tf.keras.callbacks.LearningRateScheduler(scheduler)
-    optimizer = Adam(LEARNING_RATE)
+    optimizer = Adam(LEARNING_RATE_SOURCE)
 
     loss = 'binary_crossentropy' if binary else 'categorical_crossentropy'
     model_source.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
@@ -140,7 +141,7 @@ for QUESTION_T in tqdm(ETRI_question_list.keys()):
     GNT_list_source[QUESTION_T] = y_test_source
 
 #%% source model learning curve
-from util_main import plot_learning, plot_pred_result
+from module.util_main import plot_learning, plot_pred_result
 
 ##### 학습 결과 plot (only best)
 metric = 'loss'
@@ -150,10 +151,12 @@ plot_learning(ETRI_question_list, history_list_source, GNT_list_source, metric, 
 
 # %% target model 학습 (self)
 from collections import defaultdict
-from util_main import PredictionCallback
+from module.util_main import PredictionCallback
 
 ## 학습 parameter
-N_TRIAL = 1 # N_TRIAL 개의 모델 학습
+N_TRIAL = 10 # N_TRIAL 개의 모델 학습
+EPOCH_SIZE = 100
+LEARNING_RATE_TARGET = 1e-4
 
 # 결과 저장
 model_list_target_self = defaultdict(list)
@@ -186,7 +189,7 @@ for QUESTION_T in tqdm(ETRI_question_list.keys()):
         ls = tf.keras.callbacks.LearningRateScheduler(scheduler)
         pc = PredictionCallback(X_test_target)
 
-        optimizer = Adam(LEARNING_RATE)
+        optimizer = Adam(LEARNING_RATE_TARGET)
         loss = 'binary_crossentropy' if binary else 'categorical_crossentropy'
         model_target.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
 
@@ -206,7 +209,7 @@ history_list_target_transfer = defaultdict(list)
 GNT_list = dict()
 
 ## 학습 parameter
-LEARNING_RATE = 1e-5 # source의 0.1배
+LEARNING_RATE = LEARNING_RATE_SOURCE * 0.1 # source의 0.1배
 GLOBAL = True # True시 global fine tuning
 
 for QUESTION_T in tqdm(ETRI_question_list.keys()):
@@ -257,16 +260,29 @@ for QUESTION_T in tqdm(ETRI_question_list.keys()):
 
     GNT_list[QUESTION_T] = y_test_target
 
+#%% concatenate history
+histories = dict()
+question_pred_result = dict()
+for QUESTION in tqdm(ETRI_question_list.keys()):
+    histories[QUESTION] = history_list_target_self[QUESTION] + history_list_target_transfer[QUESTION]
+    question_pred_result[QUESTION] = question_pred_result_self[QUESTION] + question_pred_result_transfer[QUESTION]
+
 #%% self-transfer 결과 분석 및 비교
+from module.util_main import plot_pred_result_v2
+##### 학습 결과 plot (only best)
 metric = 'loss'
 # metric = 'accuracy'
-# option = 'best'
-option = 'all'
 
-##### 학습 결과 plot (only best)
 plot_learning(ETRI_question_list, history_list_target_self, GNT_list, metric, N_TRIAL)
 plot_learning(ETRI_question_list, history_list_target_transfer, GNT_list, metric, N_TRIAL)
 
 #### Prediction 결과 plot
+option = 'best'
+# option = 'all'
+
+# 따로
 plot_pred_result(ETRI_question_list, history_list_target_self, question_pred_result_self, GNT_list, option, metric,  EPOCH_SIZE, N_TRIAL)
 plot_pred_result(ETRI_question_list, history_list_target_transfer, question_pred_result_transfer, GNT_list, option, metric,  EPOCH_SIZE, N_TRIAL)
+
+# 같이
+plot_pred_result_v2(ETRI_question_list, histories, question_pred_result, GNT_list, 'all', metric,  EPOCH_SIZE, N_TRIAL * 2)

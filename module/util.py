@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
-import tensorflow as tf
-
-tf.compat.v1.set_random_seed(42)
+# import tensorflow as tf
+#
+# tf.compat.v1.set_random_seed(42)
 np.random.seed(42)
 
 def load_info(path):

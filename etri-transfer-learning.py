@@ -1,8 +1,7 @@
 import os
 
 os.chdir('../')
-from util_etri import *
-import matplotlib
+from module.util_etri import *
 import tensorflow as tf
 # physical_devices = tf.config.list_physical_devices('GPU')
 # tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
@@ -98,8 +97,6 @@ label_area[label_area > 22] = 2
 labels = [label_residents, label_appliances, label_child, label_child_w_teen, label_single, label_area]
 
 #%% w/o augmented: RF
-from sklearn.model_selection import StratifiedKFold
-from sklearn.ensemble import RandomForestClassifier
 from tqdm import tqdm
 
 # result_rf = []
@@ -128,7 +125,7 @@ from tqdm import tqdm
 
 
 #%% CNN parameter tuning
-from hyperopt import hp, tpe, fmin, Trials, STATUS_OK
+from hyperopt import hp, tpe, fmin, Trials
 from functools import partial
 # from util import train
 
@@ -171,16 +168,12 @@ for classifier in ['softmax']:
         print(train_result['loss'])
 
 #%% transfer learning
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Conv2D, Flatten, MaxPool2D, Dropout, Input
+from tensorflow.keras.layers import Dense
 from tensorflow.keras.callbacks import EarlyStopping
-from tensorflow.keras.optimizers import Adam, SGD
+from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.utils import to_categorical
-from tensorflow.keras import initializers
-from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras import regularizers
-import tensorflow.keras.backend as K
-from util import svm_loss, load_obj
+from tensorflow.keras.models import Sequential
+from module.util import svm_loss, load_obj
 
 # params = {
 #     'batch_size': 128,

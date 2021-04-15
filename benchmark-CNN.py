@@ -1,10 +1,4 @@
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import StratifiedKFold
-from tqdm import tqdm
-
-import matplotlib.pyplot as plt
-from util import *
+from module.util import *
 import tensorflow as tf
 
 import matplotlib
@@ -121,7 +115,7 @@ for i in tqdm(range(1,16)):
 
 
 #%% 학습
-from hyperopt import hp, tpe, fmin, Trials, STATUS_OK
+from hyperopt import hp, tpe, fmin, Trials
 from functools import partial
 # from util import train
 
@@ -173,7 +167,7 @@ for classifier in ['svm', 'softmax']:
     result_dict[classifier + '_result'] = CNN_result_dict
     result_dict[classifier + '_param'] = CNN_param_dict
 
-from util import save_obj
+from module.util import save_obj
 save_obj(result_dict, 'param_and_result_0223_2')
 
 #%% CER 데이터 학습 -- rf
@@ -199,16 +193,12 @@ save_obj(result_dict, 'param_and_result_0223_2')
 # result_rf[7]
 
 #%% AE
-from tensorflow.keras.models import Sequential
-from tensorflow.keras import losses
-from tensorflow.keras.layers import Dense, Conv2D, Flatten, MaxPool2D, Dropout, Input, UpSampling2D, Conv2DTranspose
+from tensorflow.keras.layers import Dense, Flatten
 from tensorflow.keras.callbacks import EarlyStopping
-from tensorflow.keras.optimizers import Adam, SGD
+from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.utils import to_categorical
-from tensorflow.keras import initializers
 from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras import regularizers
-import tensorflow.keras.backend as K
+
 
 class Autoencoder(Model):
     def __init__(self):
@@ -390,16 +380,12 @@ for i in range(7, 8):
     break
 
 #%% 간단한 학습 후에 성능 평가
-from tensorflow.keras.models import Sequential
-from tensorflow.keras import losses
-from tensorflow.keras.layers import Dense, Conv2D, Flatten, MaxPool2D, Dropout, Input, UpSampling2D, Conv2DTranspose
+from tensorflow.keras.layers import Dense, Conv2D, Flatten, MaxPool2D, UpSampling2D, Conv2DTranspose
 from tensorflow.keras.callbacks import EarlyStopping
-from tensorflow.keras.optimizers import Adam, SGD
+from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.utils import to_categorical
-from tensorflow.keras import initializers
 from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras import regularizers
-import tensorflow.keras.backend as K
+
 
 class Autoencoder(Model):
     def __init__(self):
@@ -451,7 +437,6 @@ for question_number in tqdm(range(13, 14)):
         X_test = X_test.reshape(-1, 7, 24, 1)
 
         # optimizer = Adam(0.01, epsilon=0.1)
-        from collections import defaultdict
         y_preds = []
         y_true = np.ravel(y_test)
         class PredictionCallback(tf.keras.callbacks.Callback):
