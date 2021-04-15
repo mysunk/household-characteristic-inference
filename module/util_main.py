@@ -272,13 +272,13 @@ def load_CER(option = 'target'):
         data_dict, label_dict, data_ref_dict, label_ref_dict = dict(), dict(), dict(), dict()
         for i in range(1, 16):
             data_ref, label_ref = matching_ids('Q' + str(i))
-            data, label = matching_ids_with_aug('Q' + str(i))
+            # data, label = matching_ids_with_aug('Q' + str(i))
 
             label_ref_dict['Q' + str(i)] = label_ref
             data_ref_dict['Q' + str(i)] = data_ref
 
-            data_dict['Q' + str(i)] = data
-            label_dict['Q' + str(i)] = label
+            # data_dict['Q' + str(i)] = data
+            # label_dict['Q' + str(i)] = label
 
         # return data_dict, label_dict
         return data_ref_dict, label_ref_dict
