@@ -194,8 +194,9 @@ def downsampling(data_tmp):
     # 48 point를 24 point로 down sampling # FIXME
     '''
     data_tmp_down = []
-    for i in range(0, 48 * 7, 2):
-        data_tmp_down.append(np.nanmax(data_tmp[:, i:i + 2], axis=1).reshape(-1, 1))
+    for i in range(0, data_tmp.shape[1], 2):
+        max_val = np.nanmax(data_tmp[:, i:i + 2], axis=1).reshape(-1, 1)
+        data_tmp_down.append(max_val)
     data_tmp_down = np.concatenate(data_tmp_down, axis=1)
     return data_tmp_down
 
