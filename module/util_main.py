@@ -195,7 +195,7 @@ def downsampling(data_tmp):
     '''
     data_tmp_down = []
     for i in range(0, data_tmp.shape[1], 2):
-        max_val = np.nanmax(data_tmp[:, i:i + 2], axis=1).reshape(-1, 1)
+        max_val = np.nansum(data_tmp[:, i:i + 2], axis=1).reshape(-1, 1)
         data_tmp_down.append(max_val)
     data_tmp_down = np.concatenate(data_tmp_down, axis=1)
     return data_tmp_down
