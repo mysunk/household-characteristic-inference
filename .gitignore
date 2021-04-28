@@ -3,7 +3,7 @@ data/
 results
 .idea
 __pycache__
-analysis
+# analysis
 models
-dumbs
+dumbs/
 .vscode
