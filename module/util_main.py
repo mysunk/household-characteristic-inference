@@ -189,13 +189,13 @@ def load_ETRI(option = 'target'):
 
         return data_dict, label_dict
 
-def downsampling(data_tmp):
+def downsampling(data_tmp, interval):
     '''
     # 48 point를 24 point로 down sampling # FIXME
     '''
     data_tmp_down = []
-    for i in range(0, data_tmp.shape[1], 2):
-        max_val = np.sum(data_tmp[:, i:i + 2], axis=1).reshape(-1, 1)
+    for i in range(0, data_tmp.shape[1], interval):
+        max_val = np.sum(data_tmp[:, i:i + interval], axis=1).reshape(-1, 1)
         data_tmp_down.append(max_val)
     data_tmp_down = np.concatenate(data_tmp_down, axis=1)
     return data_tmp_down
@@ -476,7 +476,9 @@ def dim_reduct(data, window = 24 * 7, th = 0):
     data_3d = data_3d.transpose(2, 0, 1) # home, day, hour
     # nan_day = np.any(pd.isnull(data_3d), axis=1)
     # data_3d = data_3d[:,~nan_day, :]  # nan이 없는 집 삭제
+    
     data_list = []
+    data_id_list = []
     for i in range(data_3d.shape[0]):
         data_2d = data_3d[i,:,:].copy()
         # nan_idx = np.any(pd.isnull(data_2d), axis=1)
@@ -484,6 +486,7 @@ def dim_reduct(data, window = 24 * 7, th = 0):
         n_nan = np.sum(pd.isnull(data_2d), axis=1)
         valid_idx = n_nan <= th
         data_2d = data_2d[valid_idx,:]
+        
         # 1d interpolation
         data_df = pd.DataFrame(data_2d.T)
         data_df = data_df.interpolate(method='polynomial', order=1)
@@ -495,7 +498,42 @@ def dim_reduct(data, window = 24 * 7, th = 0):
 
         if data_2d.size == 0:
             continue
-        data_2d = np.mean(data_2d, axis=0)
+        data_list.append(np.mean(data_2d, axis=0))
+        # data_id_list = data_id_list + [i] * data_2d.shape[0]
+        data_id_list.append(i)
+    # data_list = np.concatenate(data_list, axis=0)
+    data_list = np.array(data_list)
+    data_id_list = np.array(data_id_list)
+    return data_list, data_id_list
+
+
+# nanmean으로 대표부하 선정
+def dim_reduct_v2(data, window = 24 * 7, th = 0):
+    '''
+    data를 window 단위로 nan이 있는 주를 제정하함
+    th: nan threshold
+    '''
+    cut = (data.shape[0] // window) * window
+    data = data[:cut, :]
+
+    data_3d = data.reshape(-1, window, data.shape[1])  # day, hour, home
+    data_3d = data_3d.transpose(2, 0, 1) # home, day, hour
+    # nan_day = np.any(pd.isnull(data_3d), axis=1)
+    # data_3d = data_3d[:,~nan_day, :]  # nan이 없는 집 삭제
+    
+    data_list = []
+    data_id_list = []
+    for i in range(data_3d.shape[0]):
+        data_2d = data_3d[i,:,:].copy()
+        # nan_idx = np.any(pd.isnull(data_2d), axis=1)
+
+        data_2d = np.nanmean(data_2d, axis=0)
+        if data_2d.size == 0:
+            continue
         data_list.append(data_2d)
-    data = np.array(data_list)
-    return data
+        # data_id_list = data_id_list + [i] * data_2d.shape[0]
+        data_id_list.append(i)
+    # data_list = np.concatenate(data_list, axis=0)
+    data_list = np.array(data_list)
+    data_id_list = np.array(data_id_list)
+    return data_list, data_id_list

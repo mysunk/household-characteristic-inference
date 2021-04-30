@@ -8,30 +8,6 @@ import sys
 sys.path.insert(0, '../CER-information-inference')
 from module.util_main import *
 
-
-def dim_reduct(data, window = 24 * 7):
-    '''
-    data를 window 단위로 nan이 있는 주를 제외하함
-    '''
-    cut = (data.shape[0] // window) * window
-    data = data[:cut, :]
-
-    data_3d = data.reshape(-1, window, data.shape[1])  # day, hour, home
-    data_3d = data_3d.transpose(2, 0, 1) # home, day, hour
-    # nan_day = np.any(pd.isnull(data_3d), axis=1)
-    # data_3d = data_3d[:,~nan_day, :]  # nan이 없는 집 삭제
-    data_list = []
-    for i in range(data_3d.shape[0]):
-        data_2d = data_3d[i,:,:].copy()
-        nan_idx = np.any(pd.isnull(data_2d), axis=1)
-        data_2d = data_2d[~nan_idx,:]
-        if data_2d.size == 0:
-            continue
-        data_2d = np.mean(data_2d, axis=0)
-        data_list.append(data_2d)
-    data = np.array(data_list)
-    return data
-
 start_date = pd.to_datetime('2018-07-14 00:00:00')
 end_date = pd.to_datetime('2018-08-14 23:00:00')
 
@@ -42,14 +18,13 @@ PV = pd.read_csv(path, encoding='CP949')
 data = PV.loc[:,'1':'24'].values
 data = data.reshape(-1, 24*7)
 data_dict['PV'] = data / np.max(data, axis=1).reshape(-1,1)
-#%% dataset을 어떻게 선택할지?
 
 
 #%% 같은 지역끼리
 
 from os import listdir
 data_dict = dict()
-for name in ['서울','대전','광주','인천','나주']:
+for name in ['서울']:
     path_src = f'D:/ISP/8. 과제/2020 ETRI/data/SG_data_{name}_비식별화/'
     dirs = listdir(path_src)
     for i, dir in enumerate(dirs):
@@ -63,6 +38,8 @@ for name in ['서울','대전','광주','인천','나주']:
         if data_2d.size == 0:
             continue
         data_dict[name + '_'+str(i)] = data_2d
+    
+    break
     print('Load data done')
 
 #%% CER
@@ -116,6 +93,31 @@ data_dict['CER_R'] = power_residential_rs
 print('Done load data')
 del power_df_raw
 
+# data_dict['CER_R'] = pd.DataFrame(selected_data).T.values
+# data_dict['CER_R'] =np.load('data.npy', allow_pickle = True)
+
+#%% Distribution plot
+plt.figure(figsize = (6, 3))
+plt.hist(data_dict['서울_0'].reshape(-1), label='Target', \
+    bins = 100, density = True, alpha = 0.8, color = 'b')
+plt.hist(data_dict['CER_R'].reshape(-1), label='Source', \
+    bins = 100, density = True, alpha = 0.8, color = 'black')
+plt.xlabel('Electricity consumption [kWh]')
+plt.ylabel('Density')
+plt.legend()
+plt.xlim(0, 4)
+plt.show()
+
+#%% 대표부하 plot
+plt.figure(figsize = (6, 3))
+plt.plot(data_dict['서울_0'][1,:].reshape(-1, 24).mean(axis=0).T, label='Target', color = 'b')
+plt.plot(data_dict['CER_R'][3,:].reshape(-1, 24).mean(axis=0).T, label='Source', color = 'k')
+plt.legend()
+plt.xlabel('Hour')
+plt.ylabel('Electricity consumption\n [kWh]')
+plt.show()
+
+
 #%% OT distance for all (24*7)
 import numpy as np
 import matplotlib.pylab as pl
@@ -125,9 +127,9 @@ import ot.plot
 # area = ['서울', '인천', '광주', '나주', '대전', 'CER_R','CER_SME', 'PV']
 area = list(data_dict.keys())
 
-abnormal_idx = [30, 31, 34, 37, 40]
-for index in sorted(abnormal_idx, reverse=True):
-    del area[index]
+# abnormal_idx = [30, 31, 34, 37, 40]
+# for index in sorted(abnormal_idx, reverse=True):
+#     del area[index]
 LEN_AREA = len(area)
 result_ot = np.zeros((LEN_AREA,LEN_AREA))
 for i in range(LEN_AREA):
@@ -176,9 +178,9 @@ for i in range(LEN_AREA-1):
 
 plt.figure(figsize=(8,4))
 sns.boxplot(data = result_ot_exclude_0)
-plt.plot(result_ot[-1,:-1], color='r', label='1 month avg')
+plt.plot(result_ot[-1,:-1], color='r', label='1 month avg of cluater')
 # plt.plot(result_ot[46,:40], color='b', label='4 month avg')
-plt.xticks(range(40)[::3], range(40)[::3])
+# plt.xticks(range(40)[::3], range(40)[::3])
 plt.xlabel('index of dataset')
 plt.ylabel('Optimal distance')
 plt.title('optimal distances b.t.w area')
@@ -298,8 +300,6 @@ for i in range(LEN_AREA-1):
     plt.hist(data_dict[area[i]][:100,:].reshape(-1),
              label = area[i], alpha = 0.8, bins = 100, ls='solid', histtype='step',
              density=True)
-plt.legend()
-plt.show()
 
 #%% 계절 영향 분석
 result_ot = np.zeros((12))
