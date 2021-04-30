@@ -27,9 +27,23 @@ data = data_raw.iloc[:, :3]
 for i, home in enumerate(people_n.index):
     index = np.where(data_raw.columns == home)[0]
     if len(index) == 1:
-        data[home] = data_raw.iloc[:, index[0]]
+        date = extra.loc[home, 2]
+        try:
+            date = date[:7]
+        except:
+            date = str(date)[:7]
+        try:
+            date = pd.to_datetime(date)
+        except:
+            date = pd.to_datetime(date[:4])
+
+        if date > pd.to_datetime(start_date):
+            # print(date)
+            pass
+        else:
+            data[home] = data_raw.iloc[:, index[0]]
     else:
-        print(f'index is {index} ===')
+        # print(f'index is {index} ===')
         continue
 # data = data.loc[start_date:end_date, :].copy()
 data.drop(columns=['Time', 'Season', 'Weekday'], inplace=True)
@@ -78,5 +92,7 @@ extra_info = extra_info.astype(int)
 
 
 # %% save data
-data.to_csv('data/ETRI/label_0426.csv')
-extra_info.to_csv('data/ETRI/survey_0426.csv')
+data.to_csv('data/ETRI/label_0427.csv')
+extra_info.to_csv('data/ETRI/survey_0427.csv')
+
+# %%

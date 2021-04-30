@@ -1,7 +1,9 @@
+# %%
 import pandas as pd
 import numpy as np
 
-survey_raw = pd.read_csv('data/survey/Smart meters Residential pre-trial survey data.csv', encoding='cp1252', low_memory=False)
+path = 'D:/ISP/3. 데이터/ENERGY/38_CER Electricity_Gas/CER Electricity Revised March 2012/CER_Electricity_Data/'
+survey_raw = pd.read_csv(path + 'Smart meters Residential pre-trial survey data.csv', encoding='cp1252', low_memory=False)
 survey_raw.set_index('ID', inplace=True)
 # replace blanks
 for j in range(survey_raw.shape[1]):
@@ -102,8 +104,8 @@ idx = (survey['Q3'] > 0).values * (num_adults > 1).values
 survey.loc[idx, 'Q9'] = 1
 
 # #residents를 2 class로
-survey.loc[survey['Q13'] <= 2, 'Q13'] = 0
-survey.loc[survey['Q13'] > 2, 'Q13'] = 1
+# survey.loc[survey['Q13'] <= 2, 'Q13'] = 0
+# survey.loc[survey['Q13'] > 2, 'Q13'] = 1
 
 #%% Question 4
 """
@@ -321,4 +323,4 @@ sorted_col = ['Q'+str(i) for i in range(1,16)]
 survey = survey.reindex(sorted_col, axis=1)
 
 #%% save
-survey.to_csv('data/survey_processed_0222.csv',index=True)
+survey.to_csv('../data/ETRI/survey_0427.csv',index=True)

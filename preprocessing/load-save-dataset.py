@@ -7,9 +7,9 @@ from os.path import isfile, join
 
 data_list = []
 SOURCE_PATH = 'D:/ISP/3. 데이터/ENERGY/SAVE/csv/'
-# PATH_LIST = ['save_consumption_data_2017_1_v0-1/', 'save_consumption_data_2017_2_v0-1/', \
-#             'save_consumption_data_2018_1_v0-1/', 'save_consumption_data_2018_2_v0-1/']
-PATH_LIST = ['save_consumption_data_2017_1_v0-1/']
+PATH_LIST = ['save_consumption_data_2017_1_v0-1/', 'save_consumption_data_2017_2_v0-1/', \
+            'save_consumption_data_2018_1_v0-1/', 'save_consumption_data_2018_2_v0-1/']
+# PATH_LIST = ['save_consumption_data_2017_1_v0-1/']
 for path in PATH_LIST:
     PATH = SOURCE_PATH + path
     file_list = [f for f in listdir(PATH) if isfile(join(PATH, f))]
@@ -47,9 +47,4 @@ for bmg_id in tqdm(bmg_id_list):
 
 # %% Wh to kWh
 df = df / 1000
-df.to_csv('data/SAVE/power_0426.csv', index = True)
-
-
-# %% survey
-file_path = 'D:/ISP/3. 데이터/ENERGY/SAVE/csv/save_household_survey_data/save_household_survey_updates_data_v0-3.csv'
-survey = pd.read_csv(file_path)
+df.to_csv('../data/SAVE/power_0428.csv', index = True)
