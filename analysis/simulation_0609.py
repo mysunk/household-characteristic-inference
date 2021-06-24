@@ -306,14 +306,17 @@ p = norm.pdf(x, mean_1, std_1)
 q = norm.pdf(x, mean_2, std_2)
 
 ref= KL(p, q)
+# %%
 plt.ylabel('KL Divergence')
-plt.title('KL divergence btw CER and SAVE')
+plt.title('Source: CER, Target: SAVE')
 plt.plot(kl_result,'.')
-plt.hlines(ref, 0, n_data, color = 'r',zorder=5)
+plt.hlines(ref, 0, n_data, color = 'r',zorder=5, label = 'Threshold')
 plt.xlabel('House idx')
+plt.grid(None)
+plt.legend()
 plt.show()
 
-
+# %%
 #  SAVE 하나씩 제거해가며 CER과 비교
 
 kl_result_2 = []
@@ -346,13 +349,17 @@ p = norm.pdf(x, mean_1, std_1)
 q = norm.pdf(x, mean_2, std_2)
 
 ref_2= KL(p, q)
+# %%
 plt.ylabel('KL Divergence')
-plt.title('KL divergence btw CER and SAVE')
+plt.title('Source: SAVE, Target: CER')
 plt.plot(kl_result_2,'.')
-plt.hlines(ref, 0, n_data, color = 'r',zorder=5)
+plt.hlines(ref, 0, n_data, color = 'r',zorder=5, label = 'Threshold')
 plt.xlabel('House idx')
+plt.grid(None)
+plt.legend()
 plt.show()
 
+# %%
 filtered_idx_1 = np.array(kl_result) > ref
 filtered_idx_2 = np.array(kl_result_2) > ref_2
 
@@ -365,9 +372,8 @@ p4 = range(12*2, 15*2)
 p5 = range(15*2, 18*2)
 p6 = range(18*2, 21*2)
 p7 = range(21*2, 24*2)
-p8 = range(0, 18)
 
-time_list = [p0, p1, p2, p3, p4, p5, p6, p7, p8]
+time_list = [p0, p1, p2, p3, p4, p5, p6, p7]
 
 VAL_SPLIT = 0.25
 TEST_SPLIT = 0.2
@@ -381,7 +387,7 @@ params = {
 }
 
 for data_name in ['SAVE','CER']:
-    for time_idx, time_ in enumerate(time_list[9:]):
+    for time_idx, time_ in enumerate(time_list[0:1]):
         # time_idx += 9
         # K = (time_idx - 9) * 4
         # time_ = np.array(feature_dict[f'{data_name}_mrmr_K_{K}'])
@@ -441,6 +447,75 @@ for data_name in ['SAVE','CER']:
         result_df.loc[model_name,:] = [train_acc, val_acc, test_acc,\
                                         train_auc, val_auc, test_auc, \
                                         train_f1, val_f1, test_f1]
+# %%
+def plot_history_v2(histories, save_path):
+
+    fig, ax1 = plt.subplots(figsize = (10, 5))
+    
+    key = 'loss'
+    for name, history in histories:
+        # plt.title(name)
+        val = ax1.plot(history.epoch, history.history['val_'+key],
+                    '--', label='val_loss', color = 'tab:blue')
+        ax1.plot(history.epoch, history.history[key], \
+                label='train_loss', color = 'tab:blue')
+        
+        idx = np.argmin(history.history['val_'+key])
+        best_tr = history.history[key][idx]
+        best_val = history.history['val_'+key][idx]
+    ax1.set_ylabel('Cross entropy loss', color='tab:blue')
+    ax1.tick_params(axis='y', labelcolor='tab:blue')
+    ax1.axvline(x=idx, color = 'r')
+
+    key = 'acc'
+    ax2 = ax1.twinx()
+    for name, history in histories:
+        val = ax2.plot(history.epoch, history.history['val_'+key],
+                    '--', label='val_acc', color = 'tab:orange')
+        ax2.plot(history.epoch, history.history[key], \
+                label= 'train_acc', color = 'tab:orange')
+    ax2.set_ylabel('Accuracy', color='tab:orange')
+    ax2.tick_params(axis='y', labelcolor='tab:orange')
+    ax2.set_xlabel('Epoch')
+    ax1.grid(None)
+    ax2.grid(None)
+    ax1.legend(['val_loss', 'train_loss'], loc=3)
+    ax2.legend(['val_acc', 'train_acc'])
+    ax1.set_zorder(1)
+    ax2.set_zorder(2)
+    ax1.set_xlabel('Epoch')
+
+    fig.tight_layout()
+    plt.title('')
+    # print('Train {} is {:.3f}, Val {} is {:.3f}'.format(key, best_tr,key, best_val))
+    plt.xlabel('Epochs')
+    plt.show()
+
+plot_history_v2([(model_name, history_self)],save_path = 'household-characteristic-inference/plots/'+model_name+'.png')
+
+# %% 그대로 적용
+
+for src_data_name, tgt_data_name in zip(['CER', 'SAVE'], ['SAVE', 'CER']):
+    for time_idx, time_ in enumerate(time_list[0:1]):
+        valid_feature = np.zeros((48), dtype = bool)
+        valid_feature[time_] = True
+
+        print(f'DATA:: {tgt_data_name}')
+            
+        label_ref = label_dict[tgt_data_name].copy()
+        label_ref[label_ref<=2] = 0
+        label_ref[label_ref>2] = 1
+
+        data = rep_load_dict[tgt_data_name]
+        params = make_param_int(params, ['batch_size'])
+        label = to_categorical(label_ref.copy(), dtype=int)
+        label = label.astype(float)
+
+        model = model_dict[f'{src_data_name}_src_2_timeset_{time_idx}']
+        y_pred = model.predict(data[:,valid_feature])
+
+        train_acc, train_auc, train_f1 = evaluate(label, y_pred)
+
 # %% transfer learning with various time set
 import tensorflow as tf
 
@@ -684,76 +759,78 @@ for feature_name in feature_dict.keys():
                                     train_f1, val_f1, test_f1]
 
 # %% only inference for save
-tgt_data_name = 'SAVE'
+from module.util_0607 import evaluate
 # result_df_2 = pd.DataFrame(columns = ['train_acc', 'val_acc', 'test_acc',\
 #     'train_auc', 'val_auc', 'test_auc', \
 #      'train_f1', 'val_f1', 'test_f1'])
 
-label_ref = label_dict[tgt_data_name].copy()
-label_ref[label_ref<=2] = 0
-label_ref[label_ref>2] = 1
+for tgt_data_name in ['CER']:
+    # tgt_data_name = 'CER'
+    label_ref = label_dict[tgt_data_name].copy()
+    label_ref[label_ref<=2] = 0
+    label_ref[label_ref>2] = 1
 
-data = rep_load_dict[tgt_data_name]
-params = make_param_int(params, ['batch_size'])
-label = to_categorical(label_ref.copy(), dtype=int)
-label = label.astype(float)
+    data = rep_load_dict[tgt_data_name]
+    params = make_param_int(params, ['batch_size'])
+    label = to_categorical(label_ref.copy(), dtype=int)
+    label = label.astype(float)
+    case = [0.9, 0.95, 0.975, 0.9875, 0.99, 0.995, 0.998, 0.5]
+    VAL_SPLIT = 0.25
+    for case_idx in tqdm(range(8)):
+        TEST_SPLIT = case[case_idx]
+        for i in range(1, 48):
+            key = tgt_data_name + f'_mrmr_K_{i}_case_{case_idx}'
+            time_ = np.array(feature_dict[tgt_data_name + f'_mrmr_K_{i}'])
+            valid_feature = np.zeros((48), dtype = bool)
+            valid_feature[time_] = True
+            X_train, X_test, y_train, y_test = train_test_split(data[:,valid_feature], label, test_size = TEST_SPLIT, random_state = 1, stratify = label)
+            X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size = VAL_SPLIT, random_state = 1, stratify = y_train)
 
-for case_idx in tqdm(range(8)):
-    TEST_SPLIT = case[case_idx]
-    for i in range(1, 6):
-        key = f'SAVE_mrmr_K_{i}_case_{case_idx}'
-        time_ = np.array(feature_dict[f'SAVE_mrmr_K_{i}'])
-        valid_feature = np.zeros((48), dtype = bool)
-        valid_feature[time_] = True
-        X_train, X_test, y_train, y_test = train_test_split(data[:,valid_feature], label, test_size = TEST_SPLIT, random_state = 1, stratify = label)
-        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size = VAL_SPLIT, random_state = 1, stratify = y_train)
+            model = model_dict[key]
 
-        model = model_dict[key]
-        print(X_train.shape[0])
-
-        y_train_pred = model.predict(X_train)
-        y_val_pred = model.predict(X_val)
-        y_test_pred = model.predict(X_test)
-        
-        train_acc, train_auc, train_f1 = evaluate(y_train, y_train_pred)
-        val_acc, val_auc, val_f1 = evaluate(y_val, y_val_pred)
-        test_acc, test_auc, test_f1 = evaluate(y_test, y_test_pred)
-        
-        result_df_2.loc[key,:] = [train_acc, val_acc, test_acc,\
-                                    train_auc, val_auc, test_auc, \
-                                    train_f1, val_f1, test_f1]
+            y_train_pred = model.predict(X_train)
+            y_val_pred = model.predict(X_val)
+            y_test_pred = model.predict(X_test)
+            
+            train_acc, train_auc, train_f1 = evaluate(y_train, y_train_pred)
+            val_acc, val_auc, val_f1 = evaluate(y_val, y_val_pred)
+            test_acc, test_auc, test_f1 = evaluate(y_test, y_test_pred)
+            
+            result_df.loc[key,:] = [train_acc, val_acc, test_acc,\
+                                        train_auc, val_auc, test_auc, \
+                                        train_f1, val_f1, test_f1]
 
 
 # %% random state 바꿔서 비교
 # %% 시각화 2
 type_ = 'test'
 metric = 'auc'
-data = 'SAVE'
+data = 'CER'
 
 valid_col = [i for i in result_df.columns if metric in i]
 valid_col = [i for i in valid_col if type_ in i]
 
-# plt.figure(figsize = (10, 5))
+plt.figure(figsize = (12, 5))
 plt.title(f'{data} dataset {metric.upper()} result for different K')
 
 results, results_2 = [], []
-for time in range(1, 6, 1):
+for time in range(1, 48, 1):
     valid_index = [data + f'_mrmr_K_{time}_'+'case_' + str(case) for case in range(7)]
     results.append(result_df.loc[valid_index,valid_col].values.reshape(-1))
-    results_2.append(result_df_2.loc[valid_index,valid_col].values.reshape(-1))
+    # results_2.append(result_df_2.loc[valid_index,valid_col].values.reshape(-1))
 
 import seaborn as sns
 sns.boxplot(data = results)
 plt.xlabel('K')
-# plt.xticks(range(46)[::3], range(1, 48, 1)[::3])
+plt.xticks(range(48)[::3], range(1, 48, 1)[::3])
 plt.ylabel(metric.upper())
 plt.show()
 
-sns.boxplot(data = results_2)
-plt.xlabel('K')
-# plt.xticks(range(46)[::3], range(1, 48, 1)[::3])
-plt.ylabel(metric.upper())
-plt.show()
+# sns.boxplot(data = results_2)
+# plt.xlabel('K')
+# # plt.xticks(range(46)[::3], range(1, 48, 1)[::3])
+# plt.ylabel(metric.upper())
+# plt.show()
 
 
 # %% source 자체 학습 결과는 제외
@@ -821,7 +898,7 @@ results = []
 # self_index = data + '_self_case_' + str(case)
 # results.append(result_df.loc[self_index,valid_col].values.reshape(-1))
 
-for time in range(1, 48, 1):
+for time in range(4, 48, 4):
     valid_index = [data + f'_mrmr_K_{time}_'+'case_' + str(case) for case in range(7)]
     results.append(result_df.loc[valid_index,valid_col].values.reshape(-1))
 
@@ -830,7 +907,7 @@ sns.boxplot(data = results)
 # plt.plot(result_df.loc[valid_index,valid_col].values)
 # plt.hlines(result_df.loc[self_index, valid_col], 0, len(valid_index)-1, color = 'r',zorder=5,linestyles = '--')
 plt.xlabel('K')
-plt.xticks(range(46)[::3], range(1, 48, 1)[::3])
+# plt.xticks(range(46)[::3], range(1, 48, 1)[::3])
 # plt.xticks(range(len(valid_index)), ['T' +str(i) for i in range(9)])
 plt.ylabel(metric.upper())
 # plt.legend(['Transfer learning','Self learning'])
@@ -896,27 +973,62 @@ valid_col = [i for i in valid_col if type_ in i]
 
 valid_index_1 = [data + '_trans_2_timeset_0_case_' + str(case) for case in [7,0,1,2,3,4,5]]
 
-valid_index_4 = [data + '_trans_2_timeset_2_case_' + str(case) for case in [7,0,1,2,3,4,5]]
+# valid_index_4 = [data + '_trans_2_timeset_2_case_' + str(case) for case in [7,0,1,2,3,4,5]]
 
-valid_index_3 = [data + f'_mrmr_K_3_'+'case_' + str(case) for case in [7,0,1,2,3,4,5]]
+valid_index_3 = [data + f'_mrmr_K_16_'+'case_' + str(case) for case in [7,0,1,2,3,4,5]]
 
 # valid_index_3 = [data + '_trans_2_timeset_2_case_' + str(case) for case in [7,0,1,2,3,4,5,6]]
 # valid_index_4 = [data + '_trans_2_timeset_1_case_' + str(case) for case in [7,0,1,2,3,4,5,6]]
 valid_index_2 = [data + '_self_case_' + str(case) for case in [7,0,1,2,3,4,5]]
 
 plt.figure(figsize = (10, 5))
-plt.plot(result_df.loc[valid_index_1, valid_col].values, label = 'Transfer learning', marker = 's')
+plt.plot(result_df.loc[valid_index_1, valid_col].values, label = 'Transfer learning + T0', marker = 's')
 plt.plot(result_df.loc[valid_index_3, valid_col].values, label = 'Transfer learning + mRMR', marker = 'd')
-plt.plot(result_df.loc[valid_index_4, valid_col].values, label = 'Transfer learning + T2', marker = '<')
 
 # plt.plot(result_df.loc[valid_index_4, valid_col].values, label = 'Transfer learning for T1', marker = 'd')
-plt.plot(result_df.loc[valid_index_2, valid_col].values, label = 'Self learning', marker = '^')
-plt.title(f'{data} {type_} {metric.upper()}')
+plt.plot(result_df.loc[valid_index_2, valid_col].values, label = 'Self learning', marker = '^', color = 'r')
+# plt.title(f'{data} {type_} {metric.upper()}')
 plt.legend()
 plt.xlabel('Case idx')
 plt.ylabel(metric.upper())
-plt.ylim(0.6, 0.79)
+# plt.ylim(0.6, 0.79)
+plt.grid(b=None)
 plt.show()
+# %%
+metric = 'auc'
+data = 'CER'
+valid_col = [i for i in result_df.columns if metric in i]
+valid_col = [i for i in valid_col if type_ in i]
+
+valid_index_1 = [data + '_trans_2_timeset_0_case_' + str(case) for case in [7,0,1,2,3,4,5]]
+
+valid_index_4 = [data + '_trans_2_timeset_6_case_' + str(case) for case in [7,0,1,2,3,4,5]]
+
+valid_index_3 = [data + f'_mrmr_K_4_'+'case_' + str(case) for case in [7,0,1,2,3,4,5]]
+
+# valid_index_3 = [data + '_trans_2_timeset_2_case_' + str(case) for case in [7,0,1,2,3,4,5,6]]
+# valid_index_4 = [data + '_trans_2_timeset_1_case_' + str(case) for case in [7,0,1,2,3,4,5,6]]
+valid_index_2 = [data + '_self_case_' + str(case) for case in [7,0,1,2,3,4,5]]
+
+plt.figure(figsize = (10, 5))
+plt.plot(result_df.loc[valid_index_1, valid_col].values, label = 'Transfer learning + T0', marker = 's')
+plt.plot(result_df.loc[valid_index_3, valid_col].values, label = 'Transfer learning + mRMR', marker = 'd')
+plt.plot(result_df.loc[valid_index_4, valid_col].values, label = 'Transfer learning + T6', marker = '<')
+
+# plt.plot(result_df.loc[valid_index_4, valid_col].values, label = 'Transfer learning for T1', marker = 'd')
+plt.plot(result_df.loc[valid_index_2, valid_col].values, label = 'Self learning', marker = '^')
+# plt.title(f'{data} {type_} {metric.upper()}')
+plt.legend()
+plt.xlabel('Case idx')
+plt.ylabel(metric.upper())
+# plt.ylim(0.6, 0.79)
+plt.grid(b=None)
+plt.show()
+# %% 값 확인
+# valid_index = ['CER' + '_self_case_' + str(case) for case in [7,0,1,2,3,4,5]]
+valid_index = ['CER' + f'_mrmr_K_4_'+'case_' + str(case) for case in [7,0,1,2,3,4,5]]
+
+result_df.loc[valid_index, ['test_acc', 'test_f1', 'test_auc']]
 
 # %%
 print(feature_dict['CER_mrmr_K_4'])
@@ -974,44 +1086,52 @@ plt.legend(valid_col)
 plt.show()
 
 # %% Negative transfer 관련
-data = 'CER'
-metric = 'acc'
+data = 'SAVE'
+metric = 'auc'
+type_ = 'test'
 
-index_1 = [ '_trans_timeset_0_case_7','_trans_timeset_0_case_0',
- '_trans_timeset_0_case_1',
- '_trans_timeset_0_case_2',
- '_trans_timeset_0_case_3',
- '_trans_timeset_0_case_4',
- '_trans_timeset_0_case_5',
- '_trans_timeset_0_case_6',
-]
 
-index_2 = ['_trans_2_timeset_0_case_7', '_trans_2_timeset_0_case_0',
- '_trans_2_timeset_0_case_1',
- '_trans_2_timeset_0_case_2',
- '_trans_2_timeset_0_case_3',
- '_trans_2_timeset_0_case_4',
- '_trans_2_timeset_0_case_5',
- '_trans_2_timeset_0_case_6'
- ]
 
-index_1 = [data + text for text in index_1]
-index_2 = [data + text for text in index_2]
 
-valid_col = [i for i in result_df.columns if metric in i]
-valid_col = [i for i in valid_col if type_ in i]
+plt.figure(figsize = (10, 10))
 
-plt.figure(figsize = (10, 5))
-plt.title(f'{data} dataset ' + metric.upper())
+for j, data in enumerate(['CER', 'SAVE']):
+    index_1 = [ '_trans_timeset_0_case_7','_trans_timeset_0_case_0',
+    '_trans_timeset_0_case_1',
+    '_trans_timeset_0_case_2',
+    '_trans_timeset_0_case_3',
+    '_trans_timeset_0_case_4',
+    '_trans_timeset_0_case_5',
+    ]
 
-plt.plot(result_df.loc[index_1,valid_col].values, marker = 's')
-plt.plot(result_df.loc[index_2,valid_col].values, marker = 's')
+    index_2 = ['_trans_2_timeset_0_case_7', '_trans_2_timeset_0_case_0',
+    '_trans_2_timeset_0_case_1',
+    '_trans_2_timeset_0_case_2',
+    '_trans_2_timeset_0_case_3',
+    '_trans_2_timeset_0_case_4',
+    '_trans_2_timeset_0_case_5',
+    ]
+    plt.subplot(2,1,j+1)
+    index_1 = [data + text for text in index_1]
+    index_2 = [data + text for text in index_2]
 
-plt.xticks()
-plt.legend(['all', 'proposed'])
-plt.xlabel('Case index')
-plt.ylabel(metric.upper())
-# plt.ylim([0.76, 0.8])
+    valid_col = [i for i in result_df.columns if metric in i]
+    valid_col = [i for i in valid_col if type_ in i]
+
+    # plt.title(f'{data} dataset ' + metric.upper())
+
+    plt.plot(result_df.loc[index_1,valid_col].values, marker = '<', color = 'k')
+    plt.plot(result_df.loc[index_2,valid_col].values, marker = 's', color = 'b')
+
+    plt.xticks()
+    plt.legend(['all', 'proposed'])
+    plt.xlabel('Case index')
+    plt.ylabel(metric.upper())
+    # plt.ylim([0.76, 0.8])
+    val_1 = result_df.loc[index_2,valid_col].values
+    val_2 = result_df.loc[index_1,valid_col].values
+    improvement =  (val_1 - val_2) / val_1 * 100
+    print(improvement)
 plt.show()
 
 # %% case별 확인
@@ -1049,9 +1169,10 @@ plt.hist(save_data.reshape(-1), bins = 100, label = 'SAVE', alpha = 0.3, density
 # plt.hist(save_data[save_label > 2,:10].reshape(-1), bins = 100, label = 'SAVE', alpha = 0.3, density = True)
 plt.xlabel('Energy')
 plt.ylabel('Density')
-plt.title('Distributions')
+# plt.title('Distributions')
 plt.xlim(0, 3)
 plt.legend()
+plt.grid(None)
 plt.show()
 
 # %% dataset distance
@@ -1250,17 +1371,24 @@ from tqdm import tqdm
 feature_dict = dict()
 
 for data_name in ['SAVE', 'CER']:
-    for K in tqdm(range(4, 48, 4)):
-        X = rep_load_dict[data_name]
-        y = label_dict[data_name].copy()
-        y[y<=2] = 0
-        y[y>2] = 1
+    for K in tqdm([1]):
+        data = rep_load_dict[data_name]
+        label = label_dict[data_name].copy()
+        label[label<=2] = 0
+        label[label>2] = 1
+        
+        TEST_SPLIT = 0.8
+        X_train, X_test, y_train, y_test = train_test_split(data, label, test_size = TEST_SPLIT, random_state = 0, stratify = label)
 
-        X = pd.DataFrame(X)
-        y = pd.Series(y)
+        X_train = pd.DataFrame(X_train)
+        y_train = pd.Series(y_train)
 
-        selected_features = mrmr_classif(X, y, K = K)
+        selected_features = mrmr_classif(X_train, y_train, K = K)
         feature_dict[f'{data_name}_mrmr_K_{K}'] = selected_features
+
+# for data_name in ['SAVE', 'CER']:
+#     for K in tqdm(range(1, 48)):
+#         feature_dict[f'{data_name}_mrmr_K_{K}'] = feature_dict[f'{data_name}_mrmr_K_48'][:K]
 
 # %% mrmr simulation 2
 from mrmr import mrmr_classif
@@ -1285,13 +1413,15 @@ for data_name in ['CER']:
         feature_dict[f'{data_name}_mrmr_K_{K}'] = selected_features
 
 # %%
-plt.figure(figsize = (6, 3))
+plt.figure(figsize = (8, 3))
 plt.plot(CER.iloc[:48*7,0].values, label = 'CER')
 plt.plot(SAVE.iloc[:48*7,2].values, label = 'SAVE')
-plt.xticks([])
 plt.ylabel('Energy')
+date_rep =  CER.index[:48*7].strftime("%m-%d")
+plt.xticks(range(48*7)[::21], date_rep[::21], rotation = 40)
 plt.xlabel('Date')
 plt.legend()
+plt.grid(None)
 plt.show()
 
 # %%
@@ -1315,3 +1445,53 @@ feature_dict['SAVE_mrmr_K_47']
 # %%
 for key, model in model_dict.items():
     model.save(f'model_save/{key}')
+
+# %%
+feature_dict['SAVE_mrmr_K_47'] = [3, 9, 4, 8, 2, 10, 6, 7, 11, 5, 1, 12, 13, 0, 14, 15, 47, 45, 41, 46, 16, 40, 33, 42, 44, 39, \
+38, 43, 37, 34, 35, 36, 32, 17, 31, 30, 18, 19, 29, 28, 20, 27, 26, 21, 22, 25, 23] 
+
+feature_dict['CER_mrmr_K_47'] = [1, 32, 47, 7, 2, 0, 3, 31, 46, 6, 11, 10, 45, 8, 12, 42, 44, 15, 13, 
+33, 4, 43, 5, 14, 9, 41, 34, 16, 27, 40, 39, 30, 35, 20, 17, 23, 19, 24, 21, 18, 36, 26, 25, 29, 22, 28, 37] 
+
+for data_name in ['SAVE', 'CER']:
+    for K in tqdm(range(1, 47)):
+        feature_dict[f'{data_name}_mrmr_K_{K}'] = feature_dict[f'{data_name}_mrmr_K_47'][:K]
+
+# %% Save된 model을 불러와서 inference
+import tensorflow as tf
+import glob
+
+# model_dict = dict()
+for data in ['CER']:
+    for K in range(1, 48):
+        for case in range(8):
+            model_name = data + f"_mrmr_K_{K}_case_{case}"
+            model = tf.keras.models.load_model('model_save/' + model_name)
+            model_dict[model_name] = model
+
+# %%
+idx = [32, 39, 31, 25, 38, 33]
+model = model_dict['CER_mrmr_K_6_case_5']
+predicted = model.predict(rep_load_dict['CER'][:,np.array(idx)])
+label = label_dict['CER'].copy()
+label[label<=2] = 0
+label[label>2] = 1
+print((label == np.argmax(predicted, axis=1)).mean())
+
+# %%
+idx = [3,9,4]
+for case_idx in range(8):
+    TEST_SPLIT = case[case_idx]
+    model = model_dict[f'SAVE_mrmr_K_{len(idx)}_case_{case_idx}']
+    label = label_dict['SAVE'].copy()
+    label[label<=2] = 0
+    label[label>2] = 1
+    X_train, X_test, y_train, y_test = train_test_split(rep_load_dict['SAVE'][:,np.array(idx)], label, test_size = TEST_SPLIT, random_state = 1, stratify = label)
+    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size = VAL_SPLIT, random_state = 1, stratify = y_train)
+
+    y_pred = model.predict(X_test)
+    fpr, tpr, thresholds = metrics.roc_curve(y_test, y_pred[:,0], pos_label=0)
+    auc_ = metrics.auc(fpr, tpr)
+    print(auc_)
+
+# %%

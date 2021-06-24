@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 from module.util_main import downsampling, dim_reduct
 from collections import defaultdict
-font = {'size': 16, 'family':"Malgun Gothic"}
+font = {'size': 30}
 matplotlib.rc('font', **font)
 
 from pathlib import Path
@@ -421,4 +421,274 @@ plt.title('KL divergence btw CER and SAVE')
 plt.plot(kl_result_2,'.')
 plt.hlines(ref, 0, n_data, color = 'r',zorder=5)
 plt.xlabel('House idx')
+plt.show()
+
+# %% daily variation
+plt.figure(figsize = (12, 4))
+plt.subplot(1,2,1)
+plt.plot(CER.iloc[:48*7,0])
+plt.xticks(rotation = 30)
+plt.ylabel('Energy [kW]')
+plt.xlabel('Date')
+# plt.show()
+plt.subplot(1,2,2)
+plt.plot(CER.iloc[:,1].values.reshape(-1, 48).T, color = 'k', alpha = 0.3)
+plt.plot(np.nanmean(CER.iloc[:,1].values.reshape(-1, 48), axis=0), color = 'r', label = 'average')
+plt.ylabel('Energy [kW]')
+plt.xticks(range(48)[::4], range(24)[::2])
+plt.xlabel('Hour')
+plt.show()
+
+# %% 대표부하
+
+def transform(df, sampling_interv = 24 * 2 * 7):
+    '''
+    [input]
+    df: dataframe (timeseries, home)
+    
+    [output]
+    data_2d: 2d array
+    home_arr: home index array
+    '''
+
+    # dataframe => 3d numpy array
+    n_d, n_h = df.shape
+    n_w = n_d // sampling_interv
+    n_d = n_w * sampling_interv
+    df_rs = df.iloc[:n_d,:].values.T.reshape(n_h, -1, sampling_interv)
+
+    # 3d numpy array => 2d numpy array
+    n, m, l = df_rs.shape
+    data_2d = df_rs.reshape(n*m, l)
+    home_arr = np.repeat(np.arange(0, n), m)
+    invalid_idx = np.any(pd.isnull(data_2d), axis=1)
+    data_2d = data_2d[~invalid_idx, :]
+    home_arr = home_arr[~invalid_idx]
+
+    # constant load filtering
+    invalid_idx = np.nanmin(data_2d, axis=1) == np.nanmax(data_2d, axis=1)
+    data_2d = data_2d[~invalid_idx, :]
+    home_arr = home_arr[~invalid_idx]
+
+    return data_2d, home_arr
+
+# 2d daily 형태로 변환 (house * day , hour)
+CER_rs, home_arr_c = transform(CER, 24 * 2)
+SAVE_rs, home_arr_s = transform(SAVE, 24 * 2)
+
+# %%
+import multiprocessing
+from functools import partial
+import time
+unique_home_arr = np.unique(home_arr_s)
+# label_raw = CER_label['Q13'].values
+
+def helper(i):
+    idx = home_arr_c == i
+    data_raw = CER_rs[idx,:]
+
+    n_samples = data_raw.shape[0]
+    distance = np.zeros((n_samples, n_samples))
+    for i in range(n_samples):
+        for j in range(n_samples):
+            distance[i, j] = np.linalg.norm(data_raw[i,:]-data_raw[j,:])
+
+    # rep_load_idx = np.argmin(distance.sum(axis=0))
+    return distance
+
+PROCESSES = multiprocessing.cpu_count()
+print('{}개의 CPU 사용...'.format(PROCESSES))
+
+start = time.time()
+if __name__ == '__main__':
+    p = multiprocessing.Pool(processes = PROCESSES)
+    distance_list = p.map(helper, unique_home_arr)
+
+end = time.time()
+print('Elapsed {:.2f} hours..'.format((end - start) / 3600))
+
+def evaluate(X, y):
+    '''
+    대표 부하 평가 함수
+    '''
+    
+    kf = KFold(n_splits=5, shuffle = True, random_state = 0)
+    result_tmp = np.zeros(y.shape)
+    for train_index, test_index in kf.split(X):
+        X_train, X_test = X[train_index], X[test_index]
+        y_train, y_test = y[train_index], y[test_index]
+
+        rfc = RandomForestRegressor()
+        # rfc = SVC(kernel='rbf', degree=3)
+        rfc.fit(X_train, y_train)
+        rfc_predict = rfc.predict(X_test)
+
+        # print(key)
+        result_tmp[test_index] = rfc_predict
+    result_mae = mean_absolute_error(y, result_tmp)
+    return result_mae, rfc
+
+
+# %%
+from sklearn.metrics import mean_absolute_error
+label_raw = SAVE_label['Q2'].values
+
+rep_load_list = []
+for i, home_idx in enumerate(unique_home_arr):
+    distance = distance_list[i]
+    idx = np.argsort(distance.sum(axis=0))
+    data = SAVE_rs[home_arr_s == home_idx,:]
+    rep_load_list.append(data.mean(axis=0))
+
+rep_load_arr = np.array(rep_load_list)
+label = np.array([label_raw[u] for u in unique_home_arr])
+invalid_idx = pd.isnull(label)
+rep_load_arr = rep_load_arr[~invalid_idx]
+label = label[~invalid_idx]
+
+result, rfc = evaluate(rep_load_arr, label)
+print(result)
+
+# %%
+for th in [3]:
+    print(th)
+    rep_load_list = []
+    for i, home_idx in enumerate(unique_home_arr):
+        distance = distance_list[i].mean(axis=0)
+        mean_ = distance.mean()
+        std_ = np.sqrt(distance.var())
+        data = SAVE_rs[home_arr_s == home_idx,:]
+
+        idx = distance <= mean_ + th * std_
+
+        data = data[idx,:]
+        rep_load_list.append(data.mean(axis=0))
+    rep_load_arr = np.array(rep_load_list)
+    
+    label = np.array([label_raw[u] for u in unique_home_arr])
+    invalid_idx = pd.isnull(label)
+    rep_load_arr = rep_load_arr[~invalid_idx]
+    label = label[~invalid_idx]
+    result, rfc = evaluate(rep_load_arr, label)
+    print(result)
+
+# %%
+result_list = [0.8829571384520507, \
+    0.8811039161270429, 0.8914276904101139, 0.8897471477027443,\
+        0.8942213999383287, 0.8879401788467469, 0.908]
+
+plt.plot([-0.1, 0, 0.5, 1, 1.5, 2, 3],result_list)
+plt.show()
+
+# %%
+i = 0
+
+distance = distance_list[i].mean(axis=0)
+mean_ = distance.mean()
+std_ = np.sqrt(distance.var())
+
+distances = []
+th_list = [-1]
+for th in th_list:
+    idx = distance <= mean_ + th * std_
+    distances.append(distance[idx].mean())
+
+# print(idx.sum())
+# print(distance[idx].mean())
+plt.plot(distances)
+plt.xticks(range(len(th_list)), th_list)
+plt.xlabel('threshod')
+plt.ylabel('Mean distance')
+plt.show()
+
+
+# %%
+feature_set = [range(48), range(0, 10), range(10, 18), range(18, 24),\
+    range(24,30), range(30, 36), range(36, 42), range(42, 48)]
+
+data_list = []
+for feature in feature_set:
+    data = rep_load_dict['CER'][:,feature].mean(axis=1)
+    data_list.append(data)
+data_list = np.array(data_list)
+data_2d = data_list.T
+
+mi_result, corr_result, _ = evaluate_features(data_2d, label_dict['CER'])
+result_df = pd.DataFrame()
+result_df['Corr'] = corr_result
+result_df['MI'] = mi_result
+import seaborn as sns
+
+result_df_2 = pd.DataFrame()
+result_df_2['data'] = np.concatenate([corr_result, mi_result])
+result_df_2['label'] = ['Corr'] * len(corr_result) + ['MI'] * len(mi_result)
+result_df_2['Time'] = (['T' + str(i) for i in range(0, 8)]) * 2
+
+params = {'axes.labelsize': 16,'axes.titlesize':16, 'legend.fontsize': 16, \
+    'xtick.labelsize': 16, 'ytick.labelsize': 16, 'legend.title_fontsize':16}
+matplotlib.rcParams.update(params)
+
+plt.figure(figsize = (10, 10))
+plt.subplot(2,1,1)
+sns.barplot(x="Time", y="data", hue="label", data=result_df_2)
+plt.ylabel('')
+# plt.show()
+
+# %%
+result_df = pd.DataFrame()
+for data_name in ['SAVE', 'CER']:
+    data_list = []
+    for feature in range(48):
+        data = rep_load_dict[data_name][:,feature]
+        data_list.append(data)
+    data_list = np.array(data_list)
+    data_2d = data_list.T
+
+    invalid_idx = pd.isnull(label_dict[data_name])
+    label = label_dict[data_name][~invalid_idx]
+    data_2d = data_2d[~invalid_idx]
+
+    mi_result, corr_result, _ = evaluate_features(data_2d, label)
+    
+    result_df[data_name + '_Corr'] = corr_result
+    result_df[data_name + '_MI'] = mi_result
+
+# %%
+plt.figure(figsize = (6, 3))
+plt.plot(result_df['CER_Corr'])
+plt.plot(result_df['SAVE_Corr'])
+plt.xticks(range(49)[::4], range(25)[::2])
+plt.legend(['CER','SAVE'])
+plt.grid(None)
+plt.ylabel('Correlation')
+plt.xlabel('Hour')
+plt.show()
+plt.figure(figsize = (6, 3))
+plt.plot(result_df['CER_MI'])
+plt.plot(result_df['SAVE_MI'])
+plt.grid(None)
+plt.xticks(range(49)[::4], range(25)[::2])
+plt.legend(['CER','SAVE'], loc='lower right')
+
+plt.ylabel('Mutual information')
+plt.xlabel('Hour')
+plt.show()
+
+# %%
+import seaborn as sns
+
+result_df_2 = pd.DataFrame()
+result_df_2['data'] = np.concatenate([corr_result, mi_result])
+result_df_2['label'] = ['Corr'] * len(corr_result) + ['MI'] * len(mi_result)
+result_df_2['Time'] = (['T' + str(i) for i in range(0, 8)]) * 2
+
+params = {'axes.labelsize': 16,'axes.titlesize':16, 'legend.fontsize': 16, \
+    'xtick.labelsize': 16, 'ytick.labelsize': 16, 'legend.title_fontsize':16}
+matplotlib.rcParams.update(params)
+
+# plt.figure(figsize = (10, 5))
+plt.subplot(2,1,2)
+sns.barplot(x="Time", y="data", hue="label", data=result_df_2)
+plt.ylabel('')
+plt.legend([])
 plt.show()

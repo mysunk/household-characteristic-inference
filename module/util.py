@@ -89,6 +89,7 @@ def CNN_softmax(params, binary, label):
     '''
 
     x_input = Input(shape=(7, 24, 1))
+    # x_input = Input(shape=(24*2, 1))
     x = Conv2D(8, kernel_size=(2, 3), activation='relu', input_shape=(7, 24, 1))(x_input)
     x = Conv2D(16, kernel_size=(3, 3), activation='relu')(x)
     x = MaxPool2D()(x)
