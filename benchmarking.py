@@ -556,4 +556,3 @@ for case_idx in range(len(case)):
     evaluate with acc, auc, f1 score
     '''
     result_df.loc[case_idx] = evaluate(y_test, y_pred)
-
