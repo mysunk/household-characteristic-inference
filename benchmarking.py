@@ -53,14 +53,85 @@ invalid_idx = (nan_ratio == 1)
 CER = CER.loc[:,~invalid_idx]
 CER_label = CER_label.loc[~invalid_idx,:]
 
+SAVE = pd.read_csv('data/SAVE/power_0428.csv', index_col=0)
+SAVE = SAVE.iloc[84:,:]
+SAVE.index = pd.to_datetime(SAVE.index)
+SAVE[SAVE == 0] = np.nan
+SAVE = SAVE.loc[pd.to_datetime('2017-01-01 00:00'):,:]
+
+helper_dict = defaultdict(list)
+for col in SAVE.columns:
+    helper_dict[col[2:]].append(col)
+
+# 동일 집끼리 병합
+drop_cols = []
+invalid_idx_list = []
+for key,value in helper_dict.items():
+    if len(value) >= 2:
+        valid_idx_1 = ~pd.isnull(SAVE[value[1]])
+
+        # replace value
+        SAVE[value[0]][valid_idx_1] = SAVE[value[1]][valid_idx_1]
+
+        # delete remain
+        drop_cols.append(value[1])
+
+# drop cols
+SAVE.drop(columns = drop_cols, inplace = True)
+
+# label과 data의 column 맞춤
+SAVE.columns = [c[2:] for c in SAVE.columns]
+
+### 라벨 로드
+SAVE_label = pd.read_csv('data/SAVE/save_household_survey_data_v0-3.csv', index_col = 0)
+# Interviedate가 빠른 순으로 정렬
+SAVE_label.sort_values('InterviewDate', inplace = True)
+SAVE_label = SAVE_label.T
+SAVE_label.columns = SAVE_label.columns.astype(str)
+
+# 라벨 순서를 데이터 순서와 맞춤
+valid_col = []
+for col in SAVE.columns:
+    if col in SAVE_label.columns:
+        valid_col.append(col)
+
+SAVE_label = SAVE_label[valid_col].T
+SAVE = SAVE[valid_col]
+print('Done load SAVE')
+SAVE[SAVE == 0] = np.nan
+
+start_date = pd.to_datetime('2018-01-01 00:00:00')
+end_date = pd.to_datetime('2018-06-30 23:45:00')
+
+SAVE = SAVE.loc[start_date:end_date,:]
+
+# Downsampling SAVE
+n = SAVE.shape[0]
+list_ = []
+time_ = []
+for i in range(0, n, 2):
+    data = SAVE.iloc[i:i+2,:]
+    invalid_data_idx = np.any(pd.isnull(data), axis=0)
+    data = data.sum(axis=0)
+    data.iloc[invalid_data_idx] = np.nan
+    list_.append(data)
+    time_.append(SAVE.index[i])
+list_ = pd.concat(list_, axis=1).T
+list_.index = time_
+SAVE = list_
+del list_
+
+nan_ratio = pd.isnull(SAVE).sum(axis=0) / SAVE.shape[0]
+invalid_idx = (nan_ratio == 1)
+SAVE = SAVE.loc[:,~invalid_idx]
+SAVE_label = SAVE_label.loc[~invalid_idx,:]
+
 print(CER.shape)
 print(CER_label.shape)
 
+print(SAVE.shape)
 print(CER.shape)
 
-#### CER 거르기
-# valid_household_idx = (pd.isnull(CER).sum(axis=0) <= 15)
-# CER, CER_label = CER.loc[:,valid_household_idx], CER_label.loc[valid_household_idx,:]
 
 # %% feature extraction functions
 from pywt import wavedec
@@ -406,6 +477,8 @@ def feature_extraction(data, label):
 # %% feature extraction
 CER_features, CER_profile, CER_label_t = feature_extraction(CER, CER_label.loc[:,'Q13'].values)
 
+SAVE_features, SAVE_profile, SAVE_label_t = feature_extraction(SAVE, SAVE_label.loc[:,'Q2'].values)
+
 # %% feature selection
 from sklearn.inspection import permutation_importance
 from sklearn.ensemble import RandomForestClassifier
@@ -426,34 +499,61 @@ def evaluate(y_true, y_pred):
 
     return acc_, auc_, f1_score_
 
-X = CER_features
-y = CER_label_t.copy()
-y[y<=2] = 0
-y[y>2] = 1
+# option = 1 # 1: time, 2: frequency, 3: combined
+# if option == 1:
+#     feature_range = range(54)
+# elif option == 2:
+#     feature_range = range(54, 78)
+# else:
+#     feature_range = range(78)
 
-result_df = pd.DataFrame(columns = ['AC','AUC','F1'])
+case = [0.5, 0.9, 0.95, 0.975, 0.9875, 0.99, 0.995]
+VAL_SPLIT = 0.25
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.98, random_state = 0)
+for case_idx in range(len(case)):
+    TEST_SPLIT = case[case_idx]
 
-'''
-rf based feature selection
-'''
-rf = RandomForestClassifier(n_estimators=191, max_features = 6, n_jobs=-1)
-rf.fit(X_train, y_train)
-valid_feature_idx = rf.feature_importances_ > 0
-# result = permutation_importance(rf, X_test, y_test, n_repeats=10,
-#                             random_state=42, n_jobs=6)
-# valid_feature_idx = result['importances_mean'] > 0
-# valid_feature_idx[:] = True
+    X = CER_features
+    y = CER_label_t.copy()
+    # X = SAVE_features.copy()
+    # y = SAVE_label_t.copy()
+    nan_idx = pd.isnull(y)
+    X = X[~nan_idx]
+    y = y[~nan_idx].astype(int)
 
-'''
-SVM classifier
-'''
-svc = SVC(kernel = 'rbf', C = 59, gamma = 0.0001, probability=True)
-svc.fit(X_train[:,valid_feature_idx], y_train)
-y_pred = svc.predict_proba(X_test[:,valid_feature_idx])
+    y[y<=2] = 0
+    y[y>2] = 1
 
-'''
-evaluate with acc, auc, f1 score
-'''
-result_df.loc[0] = evaluate(y_test, y_pred)
+    result_df = pd.DataFrame(columns = ['AC','AUC','F1'])
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = TEST_SPLIT, random_state = 0, stratify = y)
+    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size = VAL_SPLIT, random_state = 0, stratify = y_train)
+
+    print(X_train.shape)
+    print(X_val.shape)
+    print(X_test.shape)
+    print('====')
+    # continue
+
+    '''
+    rf based feature selection
+    '''
+    rf = RandomForestClassifier(n_estimators=191, max_features = 6, n_jobs=-1)
+    rf.fit(X_train, y_train)
+
+    result = permutation_importance(rf, X_test, y_test, n_repeats=10,
+                                random_state=42, n_jobs=6)
+    valid_feature_idx = result['importances_mean'] > 0
+
+    '''
+    SVM classifier
+    '''
+    svc = SVC(kernel = 'rbf', C = 59, gamma = 0.0001, probability=True)
+    svc.fit(X_train[:,valid_feature_idx], y_train)
+    y_pred = svc.predict_proba(X_test[:,valid_feature_idx])
+
+    '''
+    evaluate with acc, auc, f1 score
+    '''
+    result_df.loc[case_idx] = evaluate(y_test, y_pred)
+
