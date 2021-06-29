@@ -166,8 +166,16 @@ def transform(df, sampling_interv = 24 * 2 * 7):
 
     return data_2d, home_arr
 
-tmp_cols = range(CER.shape[1])
-tmp_labels = CER_label['Q13'].values.copy()
+# data_df = CER
+# tmp_labels = CER_label['Q13'].values.copy()
+
+data_df = SAVE
+tmp_labels = SAVE_label['Q2'].values.copy()
+invalid_idx = pd.isnull(tmp_labels)
+data_df = data_df.iloc[:,~invalid_idx]
+tmp_labels = tmp_labels[~invalid_idx]
+
+tmp_cols = range(data_df.shape[1])
 tmp_labels[tmp_labels<3] = 0
 tmp_labels[tmp_labels>2] = 1
 # TEST_SPLIT = 0.5
@@ -209,8 +217,8 @@ def CNN_svm(params, binary, label):
        use_bias=False, activation='linear', name='svm')(x)
 
     model = Model(x_input, x_out)
-    # optimizer = Adam(params['lr'], epsilon=params['epsilon'])
-    optimizer = SGD(lr=params['lr'], decay=0.01, momentum=0.9)
+    optimizer = Adam(params['lr'], epsilon=params['epsilon'])
+    # optimizer = SGD(lr=params['lr'], decay=0.01, momentum=0.9)
     # optimizer = tf.keras.optimizers.RMSprop(lr=2e-3, decay=1e-5)
     model.compile(optimizer=optimizer, loss=svm_loss(model.get_layer('svm'), 1e-6))
     return model
@@ -248,16 +256,22 @@ for case_idx in range(len(case)):
     X_train_idx, X_test_idx, y_train, y_test = train_test_split(tmp_cols, tmp_labels, test_size = TEST_SPLIT, random_state = 0, stratify = tmp_labels)
     X_train_idx, X_val_idx, y_train, y_val = train_test_split(X_train_idx, y_train, test_size = VAL_SPLIT, random_state = 0, stratify = y_train)
 
-    CER_rs_train, home_idx_c_train = transform(CER.iloc[:,X_train_idx], 24 * 2 * 7)
+    data_rs_train, home_idx_c_train = transform(data_df.iloc[:,X_train_idx], 24 * 2 * 7)
     label_train = np.array([y_train[idx] for idx in home_idx_c_train])
 
-    CER_rs_val, home_idx_c_val = transform(CER.iloc[:,X_val_idx], 24 * 2 * 7)
+    data_rs_val, home_idx_c_val = transform(data_df.iloc[:,X_val_idx], 24 * 2 * 7)
     label_val = np.array([y_val[idx] for idx in home_idx_c_val])
 
-    CER_rs_test, home_idx_c_test = transform(CER.iloc[:,X_test_idx], 24 * 2 * 7)
-    label_test = np.array([y_test[idx] for idx in home_idx_c_test])
+    # test는 augmentation x
+    data_rs_test, home_idx_c_test = transform(data_df.iloc[:,X_test_idx], 24 * 2 * 7)
+    unique_arr = np.unique(home_idx_c_test)
+    data_list = []
+    for idx in unique_arr:
+        data_list.append(data_rs_test[home_idx_c_test == idx].mean(axis=0))
+    X_test = np.array(data_list)
+    label_test = np.array([y_test[idx] for idx in unique_arr])
 
-    X_train, X_val, X_test = CER_rs_train.reshape(-1, 7, 48, 1), CER_rs_val.reshape(-1, 7, 48, 1), CER_rs_test.reshape(-1, 7, 48, 1)
+    X_train, X_val, X_test = data_rs_train.reshape(-1, 7, 48, 1), data_rs_val.reshape(-1, 7, 48, 1), X_test.reshape(-1, 7, 48, 1)
 
     params = {
         'lr': 0.1,
