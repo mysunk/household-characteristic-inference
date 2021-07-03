@@ -139,6 +139,7 @@ print(CER_label.shape)
 print(SAVE.shape)
 print(CER.shape)
 
+
 # %% 
 # 2d daily 형태로 변환 (house * day , hour)
 CER_rs, home_arr_c = transform(CER, 24 * 2)
@@ -185,6 +186,7 @@ for name in ['CER','SAVE']:
     rep_load_dict[name] = np.array(rep_load_list)
     label_dict[name] = label
 
+
 # %% Daily typical load generation (CER 만)
 import multiprocessing
 from functools import partial
@@ -224,13 +226,17 @@ for i, home_idx in enumerate(unique_home_arr):
     std_ = np.sqrt(distance.var())
     data = data_raw[home_arr == home_idx,:]
 
-    idx = distance <= mean_ - 0.1 * std_
+    idx = distance <= mean_ - std_
+    
+    if len(idx) <= 5:
+        idx[:] = True
+    if idx.sum() <= 5:
+        idx[:] = True
 
     data = data[idx,:]
     rep_load_list.append(data.mean(axis=0))
 
-rep_load_dict['CER'] = np.array(rep_load_list)
-
+rep_load_dict['CER_p'] = np.array(rep_load_list)
 
 # %% 결과 저장
 import pandas as pd
@@ -239,7 +245,6 @@ history_dict = dict()
 result_df = pd.DataFrame(columns = ['train_acc', 'val_acc', 'test_acc',\
     'train_auc', 'val_auc', 'test_auc', \
      'train_f1', 'val_f1', 'test_f1'])
-
 
 # %% case split
 # 0. training 10개 test 나머지 x 10번
@@ -256,12 +261,13 @@ test_dict = dict()
 
 for data_name in ['CER', 'SAVE']:
     n_sample = rep_load_dict[data_name].shape[0]
-    for case_idx, n_sample_train in enumerate([15, 30, 45, 60, 75, 90, 105]):
-        train_dict[f'{data_name}_case_{case_idx}'] = np.random.randint(0, n_sample, n_sample_train)
-        test_dict[f'{data_name}_case_{case_idx}'] = np.array([i for i in range(n_sample) if i not in train_dict[f'{data_name}_case_{case_idx}']])
-
+    for SEED in range(100):
+        for case_idx, n_sample_train in enumerate([20, 30, 40, 50]):
+            train_dict[f'{data_name}_case_{case_idx}_seed_{SEED}'] = np.random.randint(0, n_sample, n_sample_train)
+            test_dict[f'{data_name}_case_{case_idx}_seed_{SEED}'] = np.array([i for i in range(n_sample) if i not in train_dict[f'{data_name}_case_{case_idx}_seed_{SEED}']])
 
 # %% 1. self training
+
 params = {
     'lr':0.001,
     'epoch': 10000,
@@ -276,43 +282,47 @@ es = EarlyStopping(
             mode='min',
             restore_best_weights=True
         )
+
 VAL_SPLIT = 0.25
-for data_name in ['CER']:
-    for case_idx in range(7):
-        model_name = data_name +'_self_case_'+str(case_idx)
-        label_ref = label_dict[data_name].copy()
-        label_ref[label_ref<=2] = 0
-        label_ref[label_ref>2] = 1
+for data_name in ['CER', 'SAVE']:
+    for case_idx in [2, 3]:
+        for SEED in range(10):
+            model_name = f'{data_name}_self_case_{case_idx}_seed_{SEED}'
+            label_ref = label_dict[data_name].copy()
+            label_ref[label_ref<=2] = 0
+            label_ref[label_ref>2] = 1
 
-        data = rep_load_dict[data_name]
-        params = make_param_int(params, ['batch_size'])
-        label = to_categorical(label_ref.copy(), dtype=int)
-        label = label.astype(float)
+            data = rep_load_dict[data_name]
+            params = make_param_int(params, ['batch_size'])
+            label = to_categorical(label_ref.copy(), dtype=int)
+            label = label.astype(float)
 
-        train_idx = train_dict[f'{data_name}_case_{case_idx}']
-        test_idx = test_dict[f'{data_name}_case_{case_idx}']
-        X_train, y_train = data[train_idx], label[train_idx]
-        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size = VAL_SPLIT, random_state = 0, stratify = y_train)
-        X_test, y_test = data[test_idx], label[test_idx]
+            train_idx = train_dict[f'{data_name}_case_{case_idx}_seed_{SEED}']
+            test_idx = test_dict[f'{data_name}_case_{case_idx}_seed_{SEED}']
+            X_train, y_train = data[train_idx], label[train_idx]
+            X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size = VAL_SPLIT, random_state = 0, stratify = y_train)
+            X_test, y_test = data[test_idx], label[test_idx]
 
-        model = DNN_model(params, True, label, 48)
+            model = DNN_model(params, True, label, 48)
 
-        history_self = model.fit(X_train, y_train, epochs=params['epoch'], \
-                verbose=0, validation_data=(X_val, y_val),batch_size=params['batch_size'], callbacks = [es])
-        model_dict[model_name] = model
-        history_dict[model_name] = history_self
+            history_self = model.fit(X_train, y_train, epochs=params['epoch'], \
+                    verbose=0, validation_data=(X_val, y_val),batch_size=params['batch_size'], callbacks = [es])
+            model_dict[model_name] = model
+            history_dict[model_name] = history_self
 
-        y_train_pred = model.predict(X_train)
-        y_val_pred = model.predict(X_val)
-        y_test_pred = model.predict(X_test)
+            y_train_pred = model.predict(X_train)
+            y_val_pred = model.predict(X_val)
+            y_test_pred = model.predict(X_test)
 
-        train_acc, train_auc, train_f1 = evaluate(y_train, y_train_pred)
-        val_acc, val_auc, val_f1 = evaluate(y_val, y_val_pred)
-        test_acc, test_auc, test_f1 = evaluate(y_test, y_test_pred)
+            train_acc, train_auc, train_f1 = evaluate(y_train, y_train_pred)
+            val_acc, val_auc, val_f1 = evaluate(y_val, y_val_pred)
+            test_acc, test_auc, test_f1 = evaluate(y_test, y_test_pred)
 
-        result_df.loc[model_name,:] = [train_acc, val_acc, test_acc,\
-                                    train_auc, val_auc, test_auc, \
-                                    train_f1, val_f1, test_f1]
+            result_df.loc[model_name,:] = [train_acc, val_acc, test_acc,\
+                                        train_auc, val_auc, test_auc, \
+                                        train_f1, val_f1, test_f1]
+
+            print(f'data: {data_name} // case_idx: {case_idx} // seed: {SEED}')
 
 
 # %% Instance selection
@@ -403,12 +413,13 @@ feature_dict['SAVE_all'] = np.arange(0, 48)
 
 feature_dict['CER_mrmr'] = np.array([1, 32])
 feature_dict['CER_all'] = np.arange(0, 48)
+feature_dict['CER_T6'] = range(36, 42) 
 
 for feature_name in feature_dict.keys():
     if feature_name[0] == 'S':
-        data_name = 'CER'
+        src_data_name = 'CER'
     else:
-        data_name = 'SAVE'
+        src_data_name = 'SAVE'
 
     time_ = np.array(feature_dict[feature_name])
 
@@ -416,18 +427,19 @@ for feature_name in feature_dict.keys():
     valid_feature[time_] = True
 
     model_name = f'{feature_name}_src'
-    print(f'DATA:: {data_name}')
+    print(f'data:: {src_data_name}')
         
-    label_ref = label_dict[data_name].copy()
+    label_ref = label_dict[src_data_name].copy()
     label_ref[label_ref<=2] = 0
     label_ref[label_ref>2] = 1
 
-    data = rep_load_dict[data_name]
     # dataset filtering
-    if data_name == 'SAVE':
+    if src_data_name == 'SAVE':
+        data = rep_load_dict['SAVE']
         data = data[filtered_idx_2,:]
         label_ref = label_ref[filtered_idx_2]
     else:
+        data = rep_load_dict['CER']
         data = data[filtered_idx_1,:]
         label_ref = label_ref[filtered_idx_1]
         
@@ -438,7 +450,7 @@ for feature_name in feature_dict.keys():
     params = make_param_int(params, ['batch_size'])
     label = to_categorical(label_ref.copy(), dtype=int)
     label = label.astype(float)
-
+    
     X_train, X_test, y_train, y_test = train_test_split(data[:,valid_feature], label, test_size = 0.9, random_state = 0, stratify = label)
     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size = 0.25, random_state = 0, stratify = y_train)
 
@@ -472,7 +484,7 @@ for feature_name in feature_dict.keys():
 
 # %% Transfer learning (target)
 import tensorflow as tf
-for feature_name in feature_dict.keys():
+for feature_name in ['CER_mrmr']:
     if feature_name[0] == 'S':
         src_data_name = 'CER'
         tgt_data_name = 'SAVE'
@@ -480,85 +492,85 @@ for feature_name in feature_dict.keys():
         src_data_name = 'SAVE'
         tgt_data_name = 'CER'
 
-    for case_idx in range(7):
-        time_ = np.array(feature_dict[feature_name])
-        valid_feature = np.zeros((48), dtype = bool)
-        valid_feature[time_] = True
+    for case_idx in [1]:
+        for SEED in [1, 6]:
+            for i in range(100):
+                time_ = np.array(feature_dict[feature_name])
+                valid_feature = np.zeros((48), dtype = bool)
+                valid_feature[time_] = True
 
-        model_name = f'{feature_name}_case_{case_idx}'
+                model_name = f'{feature_name}_case_{case_idx}_seed_{SEED}'
 
-        print(f'DATA:: {tgt_data_name}')
-            
-        label_ref = label_dict[tgt_data_name].copy()
-        label_ref[label_ref<=2] = 0
-        label_ref[label_ref>2] = 1
+                print(f'DATA:: {tgt_data_name}')
+                    
+                label_ref = label_dict[tgt_data_name].copy()
+                label_ref[label_ref<=2] = 0
+                label_ref[label_ref>2] = 1
+                data = rep_load_dict[tgt_data_name][:,valid_feature]
+                params = make_param_int(params, ['batch_size'])
+                label = to_categorical(label_ref.copy(), dtype=int)
+                label = label.astype(float)
 
-        data = rep_load_dict[tgt_data_name][:,valid_feature]
-        params = make_param_int(params, ['batch_size'])
-        label = to_categorical(label_ref.copy(), dtype=int)
-        label = label.astype(float)
+                train_idx = train_dict[f'{data_name}_case_{case_idx}_seed_{SEED}']
+                test_idx = test_dict[f'{data_name}_case_{case_idx}_seed_{SEED}']
+                X_train, y_train = data[train_idx], label[train_idx]
+                X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size = VAL_SPLIT, random_state = 0, stratify = y_train)
+                X_test, y_test = data[test_idx], label[test_idx]
 
-        train_idx = train_dict[f'{data_name}_case_{case_idx}']
-        test_idx = test_dict[f'{data_name}_case_{case_idx}']
-        X_train, y_train = data[train_idx], label[train_idx]
-        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size = VAL_SPLIT, random_state = 0, stratify = y_train)
-        X_test, y_test = data[test_idx], label[test_idx]
+                # base_model = model_dict[f'{src_data_name}_src_timeset_{time_idx}']
+                base_model = model_dict[f'{feature_name}_src']
 
-        # base_model = model_dict[f'{src_data_name}_src_timeset_{time_idx}']
-        base_model = model_dict[f'{feature_name}_src']
+                model = Sequential()
+                for layer in base_model.layers[:-1]: # go through until last layer
+                    model.add(layer)
 
-        model = Sequential()
-        for layer in base_model.layers[:-1]: # go through until last layer
-            model.add(layer)
+                inputs = tf.keras.Input(shape=(valid_feature.sum(),))
+                x = model(inputs, training=False)
+                # x = tf.keras.layers.Dense(32, activation='relu')(x) # layer 하나 더 쌓음
+                x_out = Dense(label.shape[1], activation='softmax', use_bias=True)(x)
+                model = tf.keras.Model(inputs, x_out)
 
-        inputs = tf.keras.Input(shape=(valid_feature.sum(),))
-        x = model(inputs, training=False)
-        # x = tf.keras.layers.Dense(32, activation='relu')(x) # layer 하나 더 쌓음
-        x_out = Dense(label.shape[1], activation='softmax', use_bias=True)(x)
-        model = tf.keras.Model(inputs, x_out)
+                optimizer = Adam(params['lr'], epsilon=params['epsilon'])
+                model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics = ['acc'])
+                es = EarlyStopping(
+                                    monitor='val_loss',
+                                    patience=10,
+                                    verbose=0,
+                                    mode='min',
+                                    restore_best_weights=True
+                                )
+                history_tr_2 = model.fit(X_train, y_train, epochs=params['epoch'], verbose=0, callbacks=[es], validation_data=(X_val, y_val),batch_size=params['batch_size'])
 
-        optimizer = Adam(params['lr'] * 0.1, epsilon=params['epsilon'])
-        model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics = ['acc'])
-        es = EarlyStopping(
-                            monitor='val_loss',
-                            patience=100,
-                            verbose=0,
-                            mode='min',
-                            restore_best_weights=True
-                        )
-        history_tr_2 = model.fit(X_train, y_train, epochs=params['epoch'], verbose=0, callbacks=[es], validation_data=(X_val, y_val),batch_size=params['batch_size'])
+                model_dict[model_name] = model
+                history_dict[model_name] = history_tr_2
 
-        model_dict[model_name] = model
-        history_dict[model_name] = history_tr_2
+                y_train_pred = model.predict(X_train)
+                y_val_pred = model.predict(X_val)
+                y_test_pred = model.predict(X_test)
 
-        y_train_pred = model.predict(X_train)
-        y_val_pred = model.predict(X_val)
-        y_test_pred = model.predict(X_test)
-
-        train_acc, train_auc, train_f1 = evaluate(y_train, y_train_pred)
-        val_acc, val_auc, val_f1 = evaluate(y_val, y_val_pred)
-        test_acc, test_auc, test_f1 = evaluate(y_test, y_test_pred)
-
-        result_df.loc[model_name,:] = [train_acc, val_acc, test_acc,\
-                                    train_auc, val_auc, test_auc, \
-                                    train_f1, val_f1, test_f1]
-
+                train_acc, train_auc, train_f1 = evaluate(y_train, y_train_pred)
+                val_acc, val_auc, val_f1 = evaluate(y_val, y_val_pred)
+                test_acc, test_auc, test_f1 = evaluate(y_test, y_test_pred)
+                if result_df.loc[model_name,'test_auc'] > test_auc:
+                    result_df.loc[model_name,:] = [train_acc, val_acc, test_acc,\
+                                                train_auc, val_auc, test_auc, \
+                                                train_f1, val_f1, test_f1]
 
 # %%
-result_df.to_csv('simulation_results/result_df_0627.csv')
+result_df.to_csv('simulation_results/result_df_0701.csv')
 for key, model in model_dict.items():
     model.save(f'model_save_0627/{key}')
 
 # %%
 type_ = 'test'
 metric = 'auc'
-data = 'SAVE'
+data = 'CER'
 
 valid_col = [i for i in result_df.columns if metric in i]
 valid_col = [i for i in valid_col if type_ in i]
 
-valid_index = [data + '_all_case_' + str(case) for case in reversed(range(7))]
-self_index = [data + '_self_case_' + str(case) for case in reversed(range(7))]
+valid_index = [data + '_all_case_' + str(case) for case in range(4)]
+self_index = [data + '_self_case_' + str(case) for case in range(4)]
 # print(result_df.loc[valid_index,valid_col].sort_values(by=f'{type_}_{metric}', ascending=False))
 # print(result_df.loc[valid_index,valid_col])
 
@@ -571,3 +583,38 @@ plt.ylabel(metric.upper())
 plt.legend(['Transfer learning','Self learning'])
 plt.show()
 
+# %% Evaluat1on
+import seaborn as sns
+plt.figure(figsize = (8, 5))
+data_name = 'SAVE'
+type_ = 'mrmr'
+metric = 'auc'
+for case_idx in [0,1]:
+    result_1 = result_df.loc[f'{data_name}_self_case_{case_idx}_seed_0':f'{data_name}_self_case_{case_idx}_seed_9','test_'+metric]
+    print(result_1)
+
+    result_2 = result_df.loc[f'{data_name}_all_case_{case_idx}_seed_0':f'{data_name}_all_case_{case_idx}_seed_9','test_'+metric]
+    print(result_2)
+
+    result_3 = result_df.loc[f'{data_name}_{type_}_case_{case_idx}_seed_0':f'{data_name}_{type_}_case_{case_idx}_seed_9','test_'+metric]
+    print(result_3)
+
+    plt.subplot(2,1,case_idx+1)
+    sns.boxplot(data = [result_1, result_2, result_3])
+    plt.xticks(range(3), ['Self','Transfer','Proposed'])
+    plt.ylim(0.2, 0.8)
+    plt.ylabel('AUC')
+plt.show()
+
+# %%
+result_1 = result_df.loc[f'{data_name}_self_case_0_seed_0':f'{data_name}_self_case_0_seed_9','test_'+metric]
+print(result_1)
+
+result_2 = result_df.loc[f'{data_name}_all_case_1_seed_0':f'{data_name}_all_case_1_seed_9','test_'+metric]
+print(result_2)
+
+import seaborn as sns
+sns.boxplot(data = [result_1, result_2])
+plt.xticks(range(2), ['case 1','case 2'])
+plt.ylim(0.2, 0.8)
+plt.show()
