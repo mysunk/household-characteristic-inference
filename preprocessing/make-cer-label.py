@@ -2,7 +2,7 @@
 import pandas as pd
 import numpy as np
 
-path = 'D:/ISP/3. 데이터/ENERGY/38_CER Electricity_Gas/CER Electricity Revised March 2012/CER_Electricity_Data/'
+path = '../data/CER/'
 survey_raw = pd.read_csv(path + 'Smart meters Residential pre-trial survey data.csv', encoding='cp1252', low_memory=False)
 survey_raw.set_index('ID', inplace=True)
 # replace blanks
@@ -283,9 +283,9 @@ idx = survey['Q12'] <= 8
 idx2 = (survey['Q12'] > 8) * (survey['Q12'] <= 11)
 idx3 = survey['Q12'] > 11
 
-survey.loc[idx, 'Q12'] = 0
-survey.loc[idx2, 'Q12'] = 1
-survey.loc[idx3, 'Q12'] = 2
+# survey.loc[idx, 'Q12'] = 0
+# survey.loc[idx2, 'Q12'] = 1
+# survey.loc[idx3, 'Q12'] = 2
 
 #%% Questions 14
 """
@@ -323,4 +323,4 @@ sorted_col = ['Q'+str(i) for i in range(1,16)]
 survey = survey.reindex(sorted_col, axis=1)
 
 #%% save
-survey.to_csv('../data/ETRI/survey_0427.csv',index=True)
+survey.to_csv('../data/CER/survey_processed_0728.csv',index=True)

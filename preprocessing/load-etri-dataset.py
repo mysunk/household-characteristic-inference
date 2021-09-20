@@ -94,5 +94,3 @@ extra_info = extra_info.astype(int)
 # %% save data
 data.to_csv('data/ETRI/label_0427.csv')
 extra_info.to_csv('data/ETRI/survey_0427.csv')
-
-# %%
