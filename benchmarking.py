@@ -1,7 +1,4 @@
 '''
-@ author: Myungsun Kim
-@ Implementation date: June 24, 2021
-
 @ paper:
 Yan, Siqing, et al. 
 "Time–Frequency Feature Combination Based Household Characteristic Identification Approach Using Smart Meter Data." 
@@ -507,52 +504,57 @@ def evaluate(y_true, y_pred):
 # else:
 #     feature_range = range(78)
 
+
 case = [0.5, 0.9, 0.95, 0.975, 0.9875, 0.99, 0.995]
 VAL_SPLIT = 0.25
+# results = []
+for SEED in range(10):
+    result_df_benc = pd.DataFrame(columns = ['AC','AUC','F1'])
+    for case_idx in [100]:
+        # TEST_SPLIT = case[case_idx]
+        TEST_SPLIT = 0.2
 
-for case_idx in range(len(case)):
-    TEST_SPLIT = case[case_idx]
+        X = CER_features
+        y = CER_label_t.copy()
+        # X = SAVE_features.copy()
+        # y = SAVE_label_t.copy()
+        nan_idx = pd.isnull(y)
+        X = X[~nan_idx]
+        y = y[~nan_idx].astype(int)
 
-    X = CER_features
-    y = CER_label_t.copy()
-    # X = SAVE_features.copy()
-    # y = SAVE_label_t.copy()
-    nan_idx = pd.isnull(y)
-    X = X[~nan_idx]
-    y = y[~nan_idx].astype(int)
+        y[y<=2] = 0
+        y[y>2] = 1
 
-    y[y<=2] = 0
-    y[y>2] = 1
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = TEST_SPLIT, random_state = SEED, stratify = y)
+        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size = VAL_SPLIT, random_state = SEED, stratify = y_train)
 
-    result_df = pd.DataFrame(columns = ['AC','AUC','F1'])
+        print(X_train.shape)
+        print(X_val.shape)
+        print(X_test.shape)
+        print('====')
+        # continue
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = TEST_SPLIT, random_state = 0, stratify = y)
-    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size = VAL_SPLIT, random_state = 0, stratify = y_train)
+        '''
+        rf based feature selection
+        '''
+        rf = RandomForestClassifier(n_estimators=191, max_features = 6, n_jobs=-1)
+        rf.fit(X_train, y_train)
 
-    print(X_train.shape)
-    print(X_val.shape)
-    print(X_test.shape)
-    print('====')
-    # continue
+        # result = permutation_importance(rf, np.concatenate([X_train, X_val], axis=0), np.append(y_train, y_val), n_repeats=100,
+                                    # random_state=0, n_jobs=6)
+        # valid_feature_idx = result['importances_mean'] > 0
+        # valid_feature_idx[:] = True
 
-    '''
-    rf based feature selection
-    '''
-    rf = RandomForestClassifier(n_estimators=191, max_features = 6, n_jobs=-1)
-    rf.fit(X_train, y_train)
+        '''
+        SVM classifier
+        '''
+        svc = SVC(kernel = 'rbf', C = 59, gamma = 0.0001, probability=True)
+        svc.fit(X_train, y_train)
+        y_pred = svc.predict_proba(X_test)
 
-    result = permutation_importance(rf, X_test, y_test, n_repeats=10,
-                                random_state=42, n_jobs=6)
-    valid_feature_idx = result['importances_mean'] > 0
-
-    '''
-    SVM classifier
-    '''
-    svc = SVC(kernel = 'rbf', C = 59, gamma = 0.0001, probability=True)
-    svc.fit(X_train[:,valid_feature_idx], y_train)
-    y_pred = svc.predict_proba(X_test[:,valid_feature_idx])
-
-    '''
-    evaluate with acc, auc, f1 score
-    '''
-    result_df.loc[case_idx] = evaluate(y_test, y_pred)
+        '''
+        evaluate with acc, auc, f1 score
+        '''
+        result_df_benc.loc[case_idx] =evaluate(y_test, y_pred)
+    
+    # results.append(result_df_benc)

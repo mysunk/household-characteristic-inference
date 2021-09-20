@@ -1,7 +1,4 @@
 '''
-@ author: Myungsun Kim
-@ Implementation date: June 29, 2021
-
 @ paper:
 Wang, Yi, et al. 
 "Deep learning-based socio-demographic information identification from smart meter data."
@@ -132,7 +129,7 @@ print(CER_label.shape)
 print(SAVE.shape)
 print(CER.shape)
 
-# %% 1. Data augmentation
+# %% functions
 from sklearn.model_selection import train_test_split
 
 def transform(df, sampling_interv = 24 * 2 * 7):
@@ -166,34 +163,6 @@ def transform(df, sampling_interv = 24 * 2 * 7):
 
     return data_2d, home_arr
 
-# data_df = CER
-# tmp_labels = CER_label['Q13'].values.copy()
-
-data_df = SAVE
-tmp_labels = SAVE_label['Q2'].values.copy()
-invalid_idx = pd.isnull(tmp_labels)
-data_df = data_df.iloc[:,~invalid_idx]
-tmp_labels = tmp_labels[~invalid_idx]
-
-tmp_cols = range(data_df.shape[1])
-tmp_labels[tmp_labels<3] = 0
-tmp_labels[tmp_labels>2] = 1
-# TEST_SPLIT = 0.5
-
-# %% model build
-def svm_loss(layer, C):
-    weights = layer.weights[0]
-    weights_tf = tf.convert_to_tensor(weights)
-
-    def categorical_hinge_loss(y_true, y_pred):
-        pos = K.sum(y_true * y_pred, axis=-1)
-        neg = K.max((1.0 - y_true) * y_pred, axis=-1)
-        hinge_loss = K.mean(K.maximum(0.0, neg - pos + 1), axis=-1)
-        regularization_loss = C * (tf.reduce_sum(tf.square(weights_tf)))
-        return regularization_loss + 0.5 * hinge_loss
-
-    return categorical_hinge_loss
-
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Conv2D, Flatten, MaxPool2D, Dropout, Input
@@ -203,6 +172,18 @@ from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.models import Sequential, Model
 import tensorflow.keras.backend as K
 
+def svm_loss(layer, C):
+    weights = layer.weights[0]
+    weights_tf = tf.convert_to_tensor(weights)
+
+    def categorical_hinge_loss(y_true, y_pred):
+        pos = K.sum(y_true * y_pred, axis=-1)
+        neg = K.max((1.0 - y_true) * y_pred, axis=-1)
+        hinge_loss = C * K.mean(K.maximum(0.0, neg - pos + 1), axis=-1)
+        regularization_loss = tf.reduce_mean(tf.square(weights_tf))
+        return regularization_loss + hinge_loss
+
+    return categorical_hinge_loss
 def CNN_svm(params, binary, label):
     x_input = Input(shape=(7, 48, 1))
     x = Conv2D(8, kernel_size=(2, 3), activation='relu', input_shape=(7, 48, 1))(x_input)
@@ -214,13 +195,17 @@ def CNN_svm(params, binary, label):
 
     # Add svm layer
     x_out = Dense(label.shape[1], input_shape=(32,),
-       use_bias=False, activation='linear', name='svm')(x)
+       use_bias=False, activation='relu', name='svm')(x)
 
     model = Model(x_input, x_out)
     optimizer = Adam(params['lr'], epsilon=params['epsilon'])
     # optimizer = SGD(lr=params['lr'], decay=0.01, momentum=0.9)
     # optimizer = tf.keras.optimizers.RMSprop(lr=2e-3, decay=1e-5)
-    model.compile(optimizer=optimizer, loss=svm_loss(model.get_layer('svm'), 1e-6))
+
+    
+    # model.compile(optimizer=optimizer, loss=svm_loss(model.get_layer('svm'), params['C']),
+    # metrics = ['acc'])
+    model.compile(optimizer=optimizer, loss='hinge', metrics = ['acc'])
     return model
 
 def make_param_int(param, key_names):
@@ -229,8 +214,6 @@ def make_param_int(param, key_names):
             param[key] = int(param[key])
     return param
 
-
-# %%
 from sklearn.model_selection import train_test_split
 from sklearn import metrics
 case = [0.5, 0.9, 0.95, 0.975, 0.9875, 0.99, 0.995]
@@ -245,58 +228,121 @@ def evaluate(y_true, y_pred):
         auc_ = metrics.auc(fpr, tpr)
         f1_score_ = metrics.f1_score(y_true, np.argmax(y_pred, axis=1))
         print('accuracy: {:.3f}, auc: {:.3f}, f1 score: {:.3f}'.format(acc_, auc_, f1_score_))
-        return acc_, auc_, f1_score_
+        return acc_, f1_score_, auc_
 
-result_df = pd.DataFrame(columns = ['AC','AUC','F1'])
 
-for case_idx in range(len(case)):
 
-    TEST_SPLIT = case[case_idx]
+# %% simulation
+params = {
+            'lr': 0.1,
+            'epoch': 1000,
+            'batch_size': 128,
+            'lambda': 0.01,
+            'epsilon': 0.01,
+            'C': 0.1
+        }
+results_benc_2 = []
+for SEED in range(10):
+    result_df = pd.DataFrame(columns = ['AC','F1', 'AUC'])
+    for data_idx, data_name in enumerate(['CER', 'SAVE']):
+        if data_name == 'CER':
+            data_df = CER
+            tmp_labels = CER_label['Q13'].values.copy()
+        elif data_name == 'SAVE':
+            data_df = SAVE
+            tmp_labels = SAVE_label['Q2'].values.copy()
+        
+        invalid_idx = pd.isnull(tmp_labels)
+        data_df = data_df.iloc[:,~invalid_idx]
+        tmp_labels = tmp_labels[~invalid_idx]
 
-    X_train_idx, X_test_idx, y_train, y_test = train_test_split(tmp_cols, tmp_labels, test_size = TEST_SPLIT, random_state = 0, stratify = tmp_labels)
-    X_train_idx, X_val_idx, y_train, y_val = train_test_split(X_train_idx, y_train, test_size = VAL_SPLIT, random_state = 0, stratify = y_train)
+        tmp_cols = range(data_df.shape[1])
+        tmp_labels[tmp_labels<3] = 0
+        tmp_labels[tmp_labels>2] = 1
 
-    data_rs_train, home_idx_c_train = transform(data_df.iloc[:,X_train_idx], 24 * 2 * 7)
-    label_train = np.array([y_train[idx] for idx in home_idx_c_train])
+        for case_idx in range(len(case)):
+            TEST_SPLIT = case[case_idx]
 
-    data_rs_val, home_idx_c_val = transform(data_df.iloc[:,X_val_idx], 24 * 2 * 7)
-    label_val = np.array([y_val[idx] for idx in home_idx_c_val])
+            X_train_idx, X_test_idx, y_train, y_test = train_test_split(tmp_cols, tmp_labels, test_size = TEST_SPLIT, random_state = SEED, stratify = tmp_labels)
+            X_train_idx, X_val_idx, y_train, y_val = train_test_split(X_train_idx, y_train, test_size = VAL_SPLIT, random_state = SEED, stratify = y_train)
+            data_rs_train, home_idx_c_train = transform(data_df.iloc[:,X_train_idx], 24 * 2 * 7)
+            label_train = np.array([y_train[idx] for idx in home_idx_c_train])
+            data_rs_val, home_idx_c_val = transform(data_df.iloc[:,X_val_idx], 24 * 2 * 7)
+            label_val = np.array([y_val[idx] for idx in home_idx_c_val])
 
-    # test는 augmentation x
-    data_rs_test, home_idx_c_test = transform(data_df.iloc[:,X_test_idx], 24 * 2 * 7)
-    unique_arr = np.unique(home_idx_c_test)
-    data_list = []
-    for idx in unique_arr:
-        data_list.append(data_rs_test[home_idx_c_test == idx].mean(axis=0))
-    X_test = np.array(data_list)
-    label_test = np.array([y_test[idx] for idx in unique_arr])
+            # test는 augmentation x
+            data_rs_test, home_idx_c_test = transform(data_df.iloc[:,X_test_idx], 24 * 2 * 7)
+            unique_arr = np.unique(home_idx_c_test)
+            data_list = []
+            for idx in unique_arr:
+                data_list.append(data_rs_test[home_idx_c_test == idx].mean(axis=0))
+            X_test = np.array(data_list)
+            label_test = np.array([y_test[idx] for idx in unique_arr])
 
-    X_train, X_val, X_test = data_rs_train.reshape(-1, 7, 48, 1), data_rs_val.reshape(-1, 7, 48, 1), X_test.reshape(-1, 7, 48, 1)
+            X_train, X_val, X_test = data_rs_train.reshape(-1, 7, 48, 1), data_rs_val.reshape(-1, 7, 48, 1), X_test.reshape(-1, 7, 48, 1)
 
-    params = {
-        'lr': 0.1,
-        'epoch': 1000,
-        'batch_size': 128,
-        'lambda': 0.01,
-        'epsilon': 0.01,
-    }
-    params = make_param_int(params, ['batch_size'])
+            
+            params = make_param_int(params, ['batch_size'])
 
-    label_train_c = to_categorical(label_train.copy(), dtype=int).astype(float)
-    label_val_c = to_categorical(label_val.copy(), dtype=int).astype(float)
+            label_train_c = to_categorical(label_train.copy(), dtype=int).astype(float)
+            label_val_c = to_categorical(label_val.copy(), dtype=int).astype(float)
 
-    model = CNN_svm(params, True, label_train_c)
-    es = EarlyStopping(
-            monitor='val_loss',
-            patience=10,
-            verbose=0,
-            mode='min',
-            restore_best_weights=True
-        )
+            model = CNN_svm(params, True, label_train_c)
+            es = EarlyStopping(
+                    monitor='val_loss',
+                    patience=10,
+                    verbose=0,
+                    mode='min',
+                    restore_best_weights=True
+                )
 
-    model.fit(X_train, label_train_c, epochs=1000, verbose=0, callbacks=[es], validation_data=(X_val, label_val_c),
-                batch_size=128)
+            history = model.fit(X_train, label_train_c, epochs=params['epoch'], verbose=1, callbacks=[es], validation_data=(X_val, label_val_c),
+                        batch_size=params['batch_size'])
 
-    y_pred = model.predict(X_test)
-    result_df.loc[case_idx] = evaluate(label_test, y_pred)
+            history_dict[data_name + str(case_idx)] = history
+
+            y_pred = model.predict(X_test)
+            result_df.loc[data_idx * len(case) + case_idx] = evaluate(label_test, y_pred)
+            # print(result_df)
+    results_benc_2.append(result_df)
+
+# %% 결과 확인
+def plot_history_v2(histories, save_path):
+
+    fig, ax1 = plt.subplots(figsize = (10, 5))
     
+    key = 'loss'
+    for name, history in histories:
+        plt.title(name)
+        val = ax1.plot(history.epoch, history.history['val_'+key],
+                    '--', label='val_loss', color = 'tab:blue')
+        ax1.plot(history.epoch, history.history[key], \
+                label='train_loss', color = 'tab:blue')
+        
+        idx = np.argmin(history.history['val_'+key
+        best_tr = history.history[key][idx]
+        best_val = history.history['val_'+key][idx]
+    ax1.set_ylabel('Cross entropy loss', color='tab:blue')
+    ax1.tick_params(axis='y', labelcolor='tab:blue')
+    ax1.axvline(x=idx, color = 'r')
+
+    key = 'acc'
+    ax2 = ax1.twinx()
+    for name, history in histories:
+        val = ax2.plot(history.epoch, history.history['val_'+key],
+                    '--', label='val_acc', color = 'tab:orange')
+        ax2.plot(history.epoch, history.history[key], \
+                label= 'train_acc', color = 'tab:orange')
+    ax2.set_ylabel('Accuracy', color='tab:orange')
+    ax2.tick_params(axis='y', labelcolor='tab:orange')
+    ax2.set_xlabel('Epoch')
+
+    fig.tight_layout()
+    # print('Train {} is {:.3f}, Val {} is {:.3f}'.format(key, best_tr,key, best_val))
+    plt.xlabel('Epochs')
+    # plt.legend()
+    # plt.xlim([0,max(history.epoch)])
+    # plt.savefig(save_path, dpi = 100)
+    plt.show()
+
+plot_history_v2([('', history_dict['CER0'])], '')
