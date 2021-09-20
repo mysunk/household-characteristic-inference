@@ -518,7 +518,7 @@ def DNN_model(params, binary, label, n_feature):
     model = Model(x_input, x_out)
     optimizer = Adam(params['lr'], epsilon=params['epsilon'])
     # model.compile(optimizer=optimizer, loss='squared_hinge')
-    model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics =['acc'])
+    model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics =['acc'])
     return model
 
 def plot_history(histories, key='loss'):
@@ -600,6 +600,6 @@ def evaluate(y_true, y_pred):
     fpr, tpr, thresholds = metrics.roc_curve(np.argmax(y_true, axis=1), y_pred[:,0], pos_label=0)
     auc_ = metrics.auc(fpr, tpr)
     f1_score_ = metrics.f1_score(np.argmax(y_true, axis=1), np.argmax(y_pred, axis=1), average='weighted')
-    print('accuracy: {:.3f}, auc: {:.3f}, f1 score: {:.3f}'.format(acc_, auc_, f1_score_))
+    # print('accuracy: {:.3f}, auc: {:.3f}, f1 score: {:.3f}'.format(acc_, auc_, f1_score_))
 
     return acc_, auc_, f1_score_

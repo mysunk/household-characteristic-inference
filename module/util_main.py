@@ -191,7 +191,7 @@ def load_ETRI(option = 'target'):
 
 def downsampling(data_tmp, interval):
     '''
-    # 48 point를 24 point로 down sampling # FIXME
+    # 48 point를 24 point로 down sampling # fixme
     '''
     data_tmp_down = []
     for i in range(0, data_tmp.shape[1], interval):
