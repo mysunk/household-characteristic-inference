@@ -1,6 +1,4 @@
 # %% 데이터 로드 및 전처리
-
-
 import os
 os.chdir('../')
 
@@ -249,7 +247,7 @@ for data_name in ['SAVE', 'CER']:
         y_train_pred = model.predict(X_train)
         y_val_pred = model.predict(X_val)
         y_test_pred = model.predict(X_test)
- 
+
         train_acc, train_auc, train_f1 = evaluate(y_train, y_train_pred)
         val_acc, val_auc, val_f1 = evaluate(y_val, y_val_pred)
         test_acc, test_auc, test_f1 = evaluate(y_test, y_test_pred)
@@ -306,6 +304,7 @@ p = norm.pdf(x, mean_1, std_1)
 q = norm.pdf(x, mean_2, std_2)
 
 ref= KL(p, q)
+
 # %%
 plt.ylabel('KL Divergence')
 plt.title('Source: CER, Target: SAVE')
@@ -447,6 +446,8 @@ for data_name in ['SAVE','CER']:
         result_df.loc[model_name,:] = [train_acc, val_acc, test_acc,\
                                         train_auc, val_auc, test_auc, \
                                         train_f1, val_f1, test_f1]
+
+
 # %%
 def plot_history_v2(histories, save_path):
 
@@ -610,7 +611,6 @@ params = {
 }
 
 for feature_name in feature_dict.keys():
-    
     if feature_name[0] == 'S':
         data_name = 'CER'
     else:
@@ -691,7 +691,6 @@ for feature_name in feature_dict.keys():
         src_data_name = 'CER'
         tgt_data_name = 'SAVE'
     else:
-        continue
         src_data_name = 'SAVE'
         tgt_data_name = 'CER'
 
@@ -1493,5 +1492,3 @@ for case_idx in range(8):
     fpr, tpr, thresholds = metrics.roc_curve(y_test, y_pred[:,0], pos_label=0)
     auc_ = metrics.auc(fpr, tpr)
     print(auc_)
-
-# %%
