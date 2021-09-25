@@ -5,7 +5,23 @@
 3: single or not
 4: retired or not
 '''
-OPTION = 1
+option = 1
+
+def quantiz(label, option):
+    if option == 1:
+        label[label<=2] = 0
+        label[label>2] = 1
+    elif option == 2:
+        label[label<=8] = 0
+        label[label>11] = 2
+        label[label>8] = 1
+    elif option == 3:
+        label[label==1] = 0
+        label[label!=0] = 1
+    elif option == 4:
+        pass
+    return label
+
 
 # %%
 import os
@@ -159,25 +175,27 @@ data_dict = dict()
 for name in ['CER','SAVE']:
     if name == 'CER':
         data_raw = CER_rs
-        if OPTION == 1:
+        if option == 1:
             label_raw = CER_label['Q13'].values # number of residents
-        elif OPTION == 2:
+        elif option == 2:
             label_raw = CER_label['Q12'].values # number of appliances
-        elif OPTION == 3:
+        elif option == 3:
             label_raw = CER_label['Q13'].values # number of residents
-        elif OPTION == 4:
+        elif option == 4:
             label_raw = CER_label['Q2'].values # retired or not 
+            label_raw = (label_raw == 0).astype(int)
         home_arr = home_arr_c
     elif name == 'SAVE':
         data_raw = SAVE_rs
-        if OPTION == 1:
+        if option == 1:
             label_raw = SAVE_label['Q2'].values # number of residents
-        elif OPTION == 2:
+        elif option == 2:
             label_raw = SAVE_label.loc[:,'Q3_19_1':'Q3_19_33'].sum(axis=1).values # number of appliances
-        elif OPTION == 3:
+        elif option == 3:
             label_raw = SAVE_label['Q2'].values # number of residents
-        elif OPTION == 4:
+        elif option == 4:
             label_raw = SAVE_label['Q2D'].values # retired or not
+            label_raw = (label_raw == 7).astype(int)
         home_arr = home_arr_s
 
     invalid_idx = pd.isnull(label_raw)
@@ -458,12 +476,7 @@ for feature_name in feature_dict.keys():
     print(f'data:: {src_data_name}')
         
     label_ref = label_dict[src_data_name].copy()
-    # label_ref[label_ref<=2] = 0
-    # label_ref[label_ref>2] = 1
-
-    label_ref[label_ref<=8] = 0
-    label_ref[label_ref>11] = 2
-    label_ref[label_ref>8] = 1
+    label_ref = quantiz(label_ref, option)
 
     # dataset filtering
     if src_data_name == 'SAVE':
@@ -535,11 +548,7 @@ for feature_name in feature_dict.keys():
             print(f'DATA:: {tgt_data_name}')
                 
             label_ref = label_dict[tgt_data_name].copy()
-            # label_ref[label_ref<=2] = 0
-            # label_ref[label_ref>2] = 1
-            label_ref[label_ref<=8] = 0
-            label_ref[label_ref>11] = 2
-            label_ref[label_ref>8] = 1
+            label_ref = quantiz(label_ref, option)
 
             data = rep_load_dict[tgt_data_name][:,valid_feature]
             params = make_param_int(params, ['batch_size'])
@@ -658,4 +667,4 @@ plt.show()
 
 # %%
 import pandas as pd
-result_df = pd.read_csv('simulation_results/result_df_0716.csv')
+result_df = pd.read_csv('simulation_results/result_df_0926.csv')
