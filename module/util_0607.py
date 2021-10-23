@@ -517,8 +517,13 @@ def DNN_model(params, binary, label, n_feature):
 
     model = Model(x_input, x_out)
     optimizer = Adam(params['lr'], epsilon=params['epsilon'])
+
     # model.compile(optimizer=optimizer, loss='squared_hinge')
-    model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics =['acc'])
+    if binary:
+        loss = 'binary_crossentropy'
+    else:
+        loss = 'categorical_crossentropy'
+    model.compile(optimizer=optimizer, loss=loss, metrics =['acc'])
     return model
 
 def plot_history(histories, key='loss'):

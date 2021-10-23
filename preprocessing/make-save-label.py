@@ -10,7 +10,7 @@ SAVE_label.columns = SAVE_label.columns.astype(str)
 SAVE_label = SAVE_label.T
 
 # %%
-survey = pd.DataFrame()
+survey = pd.DataFrame(index = SAVE_label.index)
 
 # %% Q1
 '''
@@ -31,20 +31,31 @@ retired or not
 survey['Q3'] = SAVE_label['Q2D'].values # retired or not
 survey['Q3'] = (survey['Q3'] == 7).astype(int)
 
+
 # %% Q4 
 '''
 Age of chief income earner
 1: Under 18
 2: 18 - 24
 3: 25 - 34
-4: 34 - 44
+4: 35 - 44
 5: 45 - 54
 6: 55 - 64
 7: 65 - 74
 8: 75+
 9: refused
 '''
+
+import numpy as np
 survey['Q4'] = SAVE_label['Q2B'].values
+
+tmp_arr = np.zeros(survey['Q4'].shape)
+tmp_arr[:] = np.nan
+tmp_arr[(survey['Q4'] >= 7).values] = 2
+tmp_arr[(survey['Q4'] <= 6).values] = 1
+tmp_arr[(survey['Q4'] <= 3).values] = 0
+
+survey['Q4'] = tmp_arr.copy()
 
 # %% Q5 
 '''
@@ -64,8 +75,23 @@ Age of building
 12: Don't know
 13: Refused
 14: Not asked
+
+9,10,11 : new
+1 ~ 8: old
 '''
-survey['Q5'] = SAVE_label['Q3_15'].values
+import numpy as np
+survey['Q5'] = np.nan
+
+row, col = np.where(SAVE_label.loc[:,'Q3_15_1':'Q3_15_14'] == 1)
+for r, c in zip(row, col):
+    survey.iloc[r, -1] = c + 1
+
+tmp_arr = np.zeros(survey['Q5'].shape)
+tmp_arr[:] = np.nan
+tmp_arr[survey['Q5'] >= 9] = 1
+tmp_arr[survey['Q5'] < 9] = 0
+
+survey['Q5'] = tmp_arr.copy()
 
 # %% Q6
 '''
@@ -78,8 +104,25 @@ house type
 6 = In a commercial building (for example in an office building, hotel, or over a shop)
 7 = A caravan or other mobile or temporary structure
 8 = Refused
+
+1
+2 3
 '''
 survey['Q6'] = SAVE_label['Q8_2'].values
+
+(survey['Q6'] == 1).sum()
+
+(survey['Q6'] == 2).sum()
+(survey['Q6'] == 3).sum()
+
+tmp_arr = np.zeros(survey['Q6'].shape)
+tmp_arr[:] = np.nan
+
+tmp_arr[survey['Q6']  == 1] = 0
+tmp_arr[survey['Q6'] == 2] = 1
+tmp_arr[survey['Q6'] == 3] = 1
+
+survey['Q6'] = tmp_arr.copy()
 
 # %% Q7
 '''
@@ -87,4 +130,19 @@ Number of bedrooms
 Numeric
 0~13개 -- quantize 필요
 '''
+
 survey['Q7'] = SAVE_label['Q8_7'].values
+
+tmp_arr = np.zeros(survey['Q7'].shape)
+tmp_arr[:] = np.nan
+
+tmp_arr[survey['Q7'] == 1] = 0
+tmp_arr[survey['Q7'] == 2] = 0
+tmp_arr[survey['Q7'] ==3] = 1
+tmp_arr[survey['Q7'] == 4] = 2
+tmp_arr[survey['Q7'] > 4] = 3
+
+survey['Q7'] = tmp_arr.copy()
+
+# %%
+survey.to_csv('data/SAVE/survey_processed_1012.csv',index=True)

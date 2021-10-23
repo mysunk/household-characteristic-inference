@@ -1,40 +1,3 @@
-# %%
-'''
-1: number of residents
-2: number of appliances
-3: single or not
-4: retired or not
-'''
-option = int(input('Option number?'))
-
-if option == 1:
-    mrmr_features_cer = np.array([1, 32])
-    mrmr_features_save = np.array([3, 9, 4])
-elif option == 2:
-    # NOT IMPLEMENTED YET
-    pass
-elif option == 3:
-    mrmr_features_cer = [38, 24, 36, 31]
-    mrmr_features_save = [4, 8]
-elif option == 4:
-    mrmr_features_cer = [39,41,38, 40]
-    mrmr_features_save = [9, 7, 8, 10]
-
-def quantiz(label, option):
-    if option == 1:
-        label[label<=2] = 0
-        label[label>2] = 1
-    elif option == 2:
-        label[label<=8] = 0
-        label[label>11] = 2
-        label[label>8] = 1
-    elif option == 3:
-        label[label==1] = 0
-        label[label!=0] = 1
-    elif option == 4:
-        pass
-    return label
-
 
 # %%
 import os
@@ -64,6 +27,8 @@ import scipy.io
 import scipy.linalg
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score
+
+import seaborn as sns
 
 ### 에너지 데이터 로드
 SAVE = pd.read_csv('data/SAVE/power_0428.csv', index_col=0)
@@ -96,12 +61,16 @@ SAVE.drop(columns = drop_cols, inplace = True)
 SAVE.columns = [c[2:] for c in SAVE.columns]
 
 ### 라벨 로드
-SAVE_label = pd.read_csv('data/SAVE/save_household_survey_data_v0-3.csv', index_col = 0)
-# Interviedate가 빠른 순으로 정렬
-SAVE_label.sort_values('InterviewDate', inplace = True)
+# SAVE_label = pd.read_csv('data/SAVE/save_household_survey_data_v0-3.csv', index_col = 0)
+# # Interviedate가 빠른 순으로 정렬
+# SAVE_label.sort_values('InterviewDate', inplace = True)
+# SAVE_label = SAVE_label.T
+# SAVE_label.columns = SAVE_label.columns.astype(str)
+SAVE_label = pd.read_csv('data/SAVE/survey_processed_1012.csv', index_col = 0)
 SAVE_label = SAVE_label.T
 SAVE_label.columns = SAVE_label.columns.astype(str)
 
+# %%
 # 라벨 순서를 데이터 순서와 맞춤
 valid_col = []
 for col in SAVE.columns:
@@ -113,6 +82,7 @@ SAVE = SAVE[valid_col]
 print('Done load SAVE')
 SAVE[SAVE == 0] = np.nan
 
+# %%
 # CER 데이터 로드
 # start_date = pd.to_datetime('2010-09-01 00:00:00')
 # end_date = pd.to_datetime('2009-12-01 23:00:00')
@@ -175,8 +145,40 @@ print(CER.shape)
 print(CER_label.shape)
 
 print(SAVE.shape)
-print(CER.shape)
+print(SAVE_label.shape)
 
+# %% question에 맞는 label load
+'''
+1: number of residents
+2: number of appliances
+3: single or not
+4: retired or not
+'''
+option = int(input('Option number?'))
+
+if option == 1:
+    mrmr_features_cer = np.array([1, 32])
+    mrmr_features_save = np.array([3, 9, 4])
+elif option == 2:
+    mrmr_features_cer = [38, 24, 36, 31]
+    mrmr_features_save = [4, 8]
+elif option == 3:
+    mrmr_features_cer = [39,41,38, 40]
+    mrmr_features_save = [9, 7, 8, 10]
+elif option == 7:
+    mrmr_features_cer = [45, 15, 36, 47, 46, 35]
+    mrmr_features_save = [10, 44]
+
+def quantiz(label, option):
+    if option == 1:
+        label[label<=2] = 0
+        label[label>2] = 1
+    elif option == 2:
+        label[label==1] = 0
+        label[label!=0] = 1
+    else:
+        pass
+    return label
 
 # %% 
 # 2d daily 형태로 변환 (house * day , hour)
@@ -191,24 +193,22 @@ for name in ['CER','SAVE']:
         if option == 1:
             label_raw = CER_label['Q13'].values # number of residents
         elif option == 2:
-            label_raw = CER_label['Q12'].values # number of appliances
-        elif option == 3:
             label_raw = CER_label['Q13'].values # number of residents
-        elif option == 4:
+        elif option == 3:
             label_raw = CER_label['Q2'].values # retired or not 
             label_raw = (label_raw == 0).astype(int)
+        elif option == 4:
+            label_raw = CER_label['Q1'].values # age of income earner
+        elif option == 5:
+            label_raw = CER_label['Q4'].values # age of building
+        elif option == 6:
+            label_raw = CER_label['Q7'].values # house type
+        elif option == 7:
+            label_raw = CER_label['Q11'].values # house type
         home_arr = home_arr_c
     elif name == 'SAVE':
         data_raw = SAVE_rs
-        if option == 1:
-            label_raw = SAVE_label['Q2'].values # number of residents
-        elif option == 2:
-            label_raw = SAVE_label.loc[:,'Q3_19_1':'Q3_19_33'].sum(axis=1).values # number of appliances
-        elif option == 3:
-            label_raw = SAVE_label['Q2'].values # number of residents
-        elif option == 4:
-            label_raw = SAVE_label['Q2D'].values # retired or not
-            label_raw = (label_raw == 7).astype(int)
+        label_raw = SAVE_label['Q' + str(option)].values
         home_arr = home_arr_s
 
     invalid_idx = pd.isnull(label_raw)
@@ -226,6 +226,7 @@ for name in ['CER','SAVE']:
     label = np.array([label_raw[u] for u in unique_home_arr])
 
     data_dict[name] = [data_raw, label, home_arr]
+
 
 # %% Daily typical load generation
 
@@ -293,15 +294,6 @@ for i, home_idx in enumerate(unique_home_arr):
 rep_load_dict['CER'] = np.array(rep_load_list)
 '''
 
-
-# %% 결과 저장
-import pandas as pd
-model_dict = dict()
-history_dict = dict()
-result_df = pd.DataFrame(columns = ['train_acc', 'val_acc', 'test_acc',\
-    'train_auc', 'val_auc', 'test_auc', \
-     'train_f1', 'val_f1', 'test_f1'])
-
 # %% case split
 # 0. training 10개 test 나머지 x 10번
 # 1. training 20개 test 나머지 x 10번
@@ -322,7 +314,12 @@ for data_name in ['CER', 'SAVE']:
             train_dict[f'{data_name}_case_{case_idx}_seed_{SEED}'] = np.random.randint(0, n_sample, n_sample_train)
             test_dict[f'{data_name}_case_{case_idx}_seed_{SEED}'] = np.array([i for i in range(n_sample) if i not in train_dict[f'{data_name}_case_{case_idx}_seed_{SEED}']])
 
-# %% 1. self training
+# 결과 저장
+model_dict = dict()
+history_dict = dict()
+result_df = pd.DataFrame(columns = ['train_acc', 'val_acc', 'test_acc',\
+    'train_auc', 'val_auc', 'test_auc', \
+     'train_f1', 'val_f1', 'test_f1'])
 
 params = {
     'lr':0.001,
@@ -338,6 +335,97 @@ es = EarlyStopping(
             mode='min',
             restore_best_weights=True
         )
+
+
+# %% mrmr selection
+import seaborn as sns
+from mrmr import mrmr_classif
+from tqdm import tqdm
+
+selected_features = []
+for data_name in ['SAVE', 'CER']:
+    data = rep_load_dict[data_name]
+    label = label_dict[data_name].copy()
+    label = quantiz(label, option)
+    
+    X_train, X_test, y_train, y_test = train_test_split(data, label, test_size = 0.8, random_state = 0, stratify = label)
+
+    X_train = pd.DataFrame(X_train)
+    y_train = pd.Series(y_train)
+
+    selected_features.append(mrmr_classif(X_train, y_train, K = 48))
+    
+# 사용할 feature 지정
+feature_dict = dict()
+k_range = range(2, 48, 2)
+for i in k_range:
+    feature_dict[f'SAVE_mrmr_{i}'] = selected_features[0][:i]
+    feature_dict[f'CER_mrmr_{i}'] = selected_features[1][:i]
+
+# find optimal K 
+VAL_SPLIT = 0.25
+result_dict = dict()
+for feature_name, value in feature_dict.items():
+    if feature_name[0] == 'S':
+        data_name = 'SAVE'
+    else:
+        data_name = 'CER'
+
+    for case_idx in range(5):
+        model_name = f'{data_name}_self_case_{case_idx}_seed_{SEED}' # SEED 하나만
+        label_ref = label_dict[data_name].copy()
+        label_ref = quantiz(label_ref, option)
+        
+        data = rep_load_dict[data_name][:,np.array(value)]
+        params = make_param_int(params, ['batch_size'])
+        label = to_categorical(label_ref.copy(), dtype=int)
+        label = label.astype(float)
+
+        train_idx = train_dict[f'{data_name}_case_{case_idx}_seed_{SEED}']
+        test_idx = test_dict[f'{data_name}_case_{case_idx}_seed_{SEED}']
+        X_train, y_train = data[train_idx], label[train_idx]
+        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size = VAL_SPLIT, random_state = 0)
+        X_test, y_test = data[test_idx], label[test_idx]
+
+        if label.shape[1] == 2:
+            binary = True
+        else:
+            binary = False
+        model = DNN_model(params, binary, label, len(value))
+
+        history_self = model.fit(X_train, y_train, epochs=params['epoch'], \
+                verbose=0, validation_data=(X_val, y_val),batch_size=params['batch_size'], callbacks = [es])
+        model_dict[model_name] = model
+        history_dict[model_name] = history_self
+
+        y_train_pred = model.predict(X_train)
+        y_val_pred = model.predict(X_val)
+        y_test_pred = model.predict(X_test)
+
+        train_acc, train_auc, train_f1 = evaluate(y_train, y_train_pred)
+        val_acc, val_auc, val_f1 = evaluate(y_val, y_val_pred)
+        test_acc, test_auc, test_f1 = evaluate(y_test, y_test_pred)
+
+        print(f'data: {data_name} // case_idx: {case_idx} // seed: {SEED}')
+
+        result_dict[feature_name + '_' + str(case_idx)] = test_auc
+
+# find optimal K
+for data_name in ['CER', 'SAVE']:
+    want_to_show = []
+    for k in k_range:
+        want_to_show.append([result_dict[f'{data_name}_mrmr_{k}_{i}'] for i in range(5)])
+
+    sns.boxplot(data = want_to_show)
+    plt.title(f'Data: {data_name}')
+    plt.xticks(range(9),k_range)
+    # plt.ylim(0.80, 0.82)
+    plt.xlabel('K')
+    plt.ylabel('AUC')
+    plt.show()
+
+
+# %% 1. self training
 
 VAL_SPLIT = 0.25
 for data_name in ['CER', 'SAVE']:
@@ -609,96 +697,14 @@ for feature_name in feature_dict.keys():
             result_df.loc[model_name,:] = [train_acc, val_acc, test_acc,\
                                         train_auc, val_auc, test_auc, \
                                         train_f1, val_f1, test_f1]
-# %% mrmr selection
-
-from mrmr import mrmr_classif
-from tqdm import tqdm
-
-selected_features = []
-for data_name in ['SAVE', 'CER']:
-    data = rep_load_dict[data_name]
-    label = label_dict[data_name].copy()
-    label = quantiz(label, option)
-    
-    X_train, X_test, y_train, y_test = train_test_split(data, label, test_size = 0.8, random_state = 0, stratify = label)
-
-    X_train = pd.DataFrame(X_train)
-    y_train = pd.Series(y_train)
-
-    selected_features.append(mrmr_classif(X_train, y_train, K = 20))
-    
-# %% 사용할 feature 지정
-feature_dict = dict()
-for i in range(2, 20, 2):
-    feature_dict[f'SAVE_mrmr_{i}'] = selected_features[0][:i]
-    feature_dict[f'CER_mrmr_{i}'] = selected_features[1][:i]
-
-# %% find optimal K 
-VAL_SPLIT = 0.25
-result_dict = dict()
-for feature_name, value in feature_dict.items():
-    if feature_name[0] == 'S':
-        data_name = 'SAVE'
-    else:
-        data_name = 'CER'
-
-    for case_idx in range(5):
-        model_name = f'{data_name}_self_case_{case_idx}_seed_{SEED}'
-        label_ref = label_dict[data_name].copy()
-        label_ref = quantiz(label_ref, option)
-        
-        data = rep_load_dict[data_name][:,np.array(value)]
-        params = make_param_int(params, ['batch_size'])
-        label = to_categorical(label_ref.copy(), dtype=int)
-        label = label.astype(float)
-
-        train_idx = train_dict[f'{data_name}_case_{case_idx}_seed_{SEED}']
-        test_idx = test_dict[f'{data_name}_case_{case_idx}_seed_{SEED}']
-        X_train, y_train = data[train_idx], label[train_idx]
-        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size = VAL_SPLIT, random_state = 0)
-        X_test, y_test = data[test_idx], label[test_idx]
-
-        if label.shape[1] == 2:
-            binary = True
-        else:
-            binary = False
-        model = DNN_model(params, binary, label, len(value))
-
-        history_self = model.fit(X_train, y_train, epochs=params['epoch'], \
-                verbose=0, validation_data=(X_val, y_val),batch_size=params['batch_size'], callbacks = [es])
-        model_dict[model_name] = model
-        history_dict[model_name] = history_self
-
-        y_train_pred = model.predict(X_train)
-        y_val_pred = model.predict(X_val)
-        y_test_pred = model.predict(X_test)
-
-        train_acc, train_auc, train_f1 = evaluate(y_train, y_train_pred)
-        val_acc, val_auc, val_f1 = evaluate(y_val, y_val_pred)
-        test_acc, test_auc, test_f1 = evaluate(y_test, y_test_pred)
-
-        print(f'data: {data_name} // case_idx: {case_idx} // seed: {SEED}')
-
-        result_dict[feature_name + '_' + str(case_idx)] = test_auc
-
-# %% find optimal K
-data_name = 'CER'
-want_to_show = []
-for k in range(2, 20, 2):
-    want_to_show.append([result_dict[f'{data_name}_mrmr_{k}_{i}'] for i in range(5)])
-
-sns.boxplot(data = want_to_show)
-plt.title(f'Data: {data_name}')
-plt.xticks(range(9),range(2, 20, 2))
-plt.ylim(0.80, 0.82)
-plt.xlabel('K')
-plt.ylabel('AUC')
-plt.show()
 
 # %%
-result_df.to_csv(f'simulation_results/result_df_option_{option}_0926.csv')
+result_df.to_csv(f'simulation_results/result_df_option_{option}_1012.csv')
 
 # %%
+'''
+analysis
+'''
 type_ = 'test'
 metric = 'auc'
 data = 'CER'
