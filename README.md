@@ -66,7 +66,7 @@ Train the pre-trained model with target dataset
 ### 6. Testing
 Infer test dataset with the rest of target dataset
 
-Evaluation
+Benchmarking
 =======================================
 Compare our methodology with benchmarking methodologys in the face of a shortage of datasets
 
