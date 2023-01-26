@@ -70,18 +70,14 @@ Evaluation
 =======================================
 Compare our methodology with benchmarking methodologys in the face of a shortage of datasets
 
-1.` 
-@ paper:
+1. @ paper:
 Wang, Yi, et al. 
 "Deep learning-based socio-demographic information identification from smart meter data."
-IEEE Transactions on Smart Grid 10.3 (2018): 2593-2602.
-`  
-2. `
-@ paper:
+IEEE Transactions on Smart Grid 10.3 (2018): 2593-2602.  
+2. @ paper:
 Yan, Siqing, et al. 
 "Time–Frequency Feature Combination Based Household Characteristic Identification Approach Using Smart Meter Data." 
 IEEE Transactions on Industry Applications 56.3 (2020): 2251-2262.
-`
 ```
 python benchmarking.py
 python benchmarking-2.py
