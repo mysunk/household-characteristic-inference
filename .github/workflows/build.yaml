@@ -6,9 +6,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python
-      uses: actions/setup-python@v2
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
       with:
         python-version: '3.9.x'
     - name: Install dependencies
@@ -16,7 +15,7 @@ jobs:
         pip install -r requirements.txt
     - name: Linting
       run: |
-        pylint .
+        pylint --rcfile=pylintrc --output-format=text **/*/*.py
     - name: Test with pytest
       run: |
         export FLAX_LAZY_RNG=no
