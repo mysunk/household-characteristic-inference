@@ -26,6 +26,12 @@ class SAVEDataset(BaseDataset):
         self.info = self.preprocess_info()
         _, self.energy = self.preprocess_energy()
         self.energy, self.info = self.align_dataset(self.energy, self.info)
+        
+        self.save_prepared_data(self.energy, self.info)
+        
+    def save_prepared_data(self, energy, info):
+        energy.to_csv('data/prepared/SAVE/energy.csv')
+        info.to_csv('data/prepared/SAVE/info.csv')
     
     def load_and_merge_energy_multiple_households(self, datadir: str) -> pd.DataFrame:
         """Merge multiple raw energy datasets

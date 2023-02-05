@@ -32,6 +32,12 @@ class CERDataset(BaseDataset):
         
         self.energy, self.info = self.align_dataset(self.energy, self.info)
         self.energy, self.info = self.filter_invalid_household(self.energy, self.info)
+        
+        self.save_prepared_data(self.energy, self.info)
+        
+    def save_prepared_data(self, energy, info):
+        energy.to_csv('data/prepared/CER/energy.csv')
+        info.to_csv('data/prepared/CER/info.csv')
     
     def filter_invalid_household(self, energy, info):
         # filter all nan data
