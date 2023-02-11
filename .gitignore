@@ -1,10 +1,11 @@
-etc/
-data/
+*.csv
+*.doc
+*.pdf
+*.txt
 results
 .idea
 __pycache__
 # analysis
-models
 dumbs/
 .vscode
 clustering_result/
