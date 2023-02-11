@@ -53,7 +53,7 @@ From this process, we can get dataset in `data/prepared` like below.
             |- energy.csv
             |- info.csv
 ```
-energy.csv sample
+`energy.csv` sample
 ```
                      956600034  956600058  956600128
 timestamp                                              
@@ -63,7 +63,7 @@ timestamp
 2018-01-01 00:45:00       0.008         NaN         NaN
 2018-01-01 01:00:00       0.016         NaN         NaN
 ```
-info.csv sample
+`info.csv` sample
 ```
             Q1     Q2     Q3   Q4   Q5   Q6   Q7
 BMG_ID                                          
@@ -74,7 +74,7 @@ BMG_ID
 956600090  2.0  False  False  1.0  NaN  1.0  1.0
 ```
 `SAVE dataset`: 3938 households  
-`CER dataset`: 3938 households
+`CER dataset`: 3248 households
 
 ### Train and Evaluate
 ```
