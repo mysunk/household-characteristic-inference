@@ -11,9 +11,9 @@ Introduction
 * Collecting household characteristics information and corresponding smart meter data requires considerable effort and cost
 * We present a transfer learning methodology using datasets collected from different areas
 
-Usage
+Steps to Reproduce
 ==================
-### Dataset
+### Download raw dataset
 Download following datasets  
 `SAVE Dataset`: [link](https://beta.ukdataservice.ac.uk/datacatalogue/doi/?id=8676#1)  
 `CER Dataset`: [link](http://www.ucd.ie/issda/data/commissionforenergyregulationcer/)
@@ -22,27 +22,59 @@ Data location should be like belows
 ```
 .
 |- data
-    |- CER
-        |- power.csv
-        |- Smart meters Residential pre-trial survey data.csv
-    |- SAVE
-        |- power.csv
-        |- save_household_survey_data_v0-3.csv
+    |- raw # raw datasets downloaded
+        |- CER
+        |- SAVE
 ```
 
-### Install
+### Install requirements
 ```
 pip install -r requirements.txt
 ```
 
-
-### Preprocessing
-Make label dataset
+### Prepare data from raw dataset
+Make time series energy dataset and label
 ```
-python preprocessing/make-cer-label.py
-python preprocessing/make-save-label.py
+python prepare/cer_dataset.py
+python prepare/save_dataset.py
 ```
-
+From this process, we can get dataset in `data/prepared` like below.
+```
+.
+|- data
+    |- raw # raw datasets downloaded
+        |- CER
+        |- SAVE
+    |- prepared # prepared dataset
+        |- CER
+            |- energy.csv
+            |- info.csv
+        |- SAVE
+            |- energy.csv
+            |- info.csv
+```
+energy.csv sample
+```
+                     956600034  956600058  956600128
+timestamp                                              
+2018-01-01 00:00:00       0.006         NaN         NaN
+2018-01-01 00:15:00       0.017         NaN         NaN
+2018-01-01 00:30:00       0.007         NaN         NaN
+2018-01-01 00:45:00       0.008         NaN         NaN
+2018-01-01 01:00:00       0.016         NaN         NaN
+```
+info.csv sample
+```
+            Q1     Q2     Q3   Q4   Q5   Q6   Q7
+BMG_ID                                          
+956600035  3.0  False  False  0.0  NaN  0.0  1.0
+956600128  4.0  False  False  1.0  NaN  1.0  1.0
+956600093  1.0   True   True  2.0  NaN  0.0  0.0
+956600107  2.0  False  False  2.0  NaN  0.0  1.0
+956600090  2.0  False  False  1.0  NaN  1.0  1.0
+```
+`SAVE dataset`: 3938 households  
+`CER dataset`: 3938 households
 
 ### Train and Evaluate
 ```
