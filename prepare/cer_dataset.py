@@ -3,7 +3,7 @@
 
 from dataclasses import dataclass
 from base_dataset import BaseDataset
-from utils import class_decorator, timeit
+from utils.logger import class_decorator, timeit
 
 import pandas as pd
 import numpy as np
@@ -64,7 +64,7 @@ class CERDataset(BaseDataset):
         """
         file_list = [f for f in listdir(datadir) if isfile(join(datadir, f))]
         home_list = []
-        for i, file in tqdm(enumerate(file_list[:10])):
+        for i, file in tqdm(enumerate(file_list)):
             home = pd.read_csv(datadir + file, low_memory=False, names=['time',file[:4]], skiprows=1)
             home.index = pd.to_datetime(home['time'])
             home.drop(columns=['time'],inplace=True)
@@ -80,7 +80,7 @@ class CERDataset(BaseDataset):
         Separate CER dataset File 1 ~6 . txt into .csv for each smart meter.
         """
         
-        if os.exist(datadir + 'files_csv'):
+        if os.path.exists(datadir + 'files_csv'):
             # already processed
             return
         

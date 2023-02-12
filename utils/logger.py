@@ -1,8 +1,9 @@
-""" Define util functions
+""" Define helpers for logging and debuging
 """
 
 import time
 from functools import wraps
+import tensorflow as tf
 
 def timeit(func):
     @wraps(func)
@@ -22,3 +23,14 @@ def class_decorator(decorator):
                 setattr(cls, attr, decorator(getattr(cls, attr)))
         return cls
     return decorate
+
+class PredictionCallback(tf.keras.callbacks.Callback):
+    """ save prediction results of each epoch
+    """
+    def __init__(self, x_test):
+        self.x_test = x_test
+        self.y_preds = []
+
+    def on_epoch_end(self, epoch, logs={}):
+        y_pred = self.model.predict(self.x_test)
+        self.y_preds.append(y_pred)

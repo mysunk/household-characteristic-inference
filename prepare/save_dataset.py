@@ -3,7 +3,7 @@
 
 from dataclasses import dataclass
 from base_dataset import BaseDataset
-from utils import class_decorator, timeit
+from utils.logger import class_decorator, timeit
 
 from collections import defaultdict
 import pandas as pd
@@ -149,7 +149,7 @@ class SAVEDataset(BaseDataset):
                 columns_to_drop.append(second_column)
 
         energy.drop(columns=columns_to_drop, inplace=True)
-        energy.columns = [col[1:].lower() for col in energy.columns]
+        energy.columns = [col[2:].lower() for col in energy.columns]
 
         return energy
 
@@ -239,7 +239,7 @@ class SAVEDataset(BaseDataset):
         # retired or not
         ###
         info['Q3'] = survey['Q2D'].values # retired or not
-        info['Q3'] = (info['Q3'] == 7).astype(int)
+        info['Q3'] = (info['Q3'] == 7)
 
         ### Q4 
         # Age of chief income earner

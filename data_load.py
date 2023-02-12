@@ -6,9 +6,25 @@ import pandas as pd
 from torch.utils.data import Dataset
 import os
 import numpy as np
+from dataclasses import dataclass
 
+from utils.logger import class_decorator, timeit
+
+@dataclass
+@class_decorator(timeit)
 class HouseholdEnergyDataset(Dataset):
-    """household energy dataset
+    """
+    Load and process data, label from raw data
+    
+    Args:
+        data_dir (str): base data dir
+        label_option (int): see get_label_from_option
+        sampling_rate (int, optional): if None, not sampled.
+    
+    Attributes:
+        data: n x d array. n is number of households and d is representative load
+        label: (n,) array which represents household information such as number of residents, 
+            number of appliances, etc.
     """
     def __init__(self, data_dir, label_option, sampling_rate = None):
         data_raw, label_raw = self.load_dataset(data_dir)
@@ -167,8 +183,3 @@ class HouseholdEnergyDataset(Dataset):
         
         data_rep= self.get_representative_loads(data_2d, home_index)
         return data_rep
-    
-    
-if __name__ == '__main__':
-    save_dataset = HouseholdEnergyDataset(data_dir = 'data/prepared/SAVE', label_option = 1, sampling_rate = 2)
-    cer_dataset = HouseholdEnergyDataset(data_dir = 'data/prepared/CER', label_option = 1)
