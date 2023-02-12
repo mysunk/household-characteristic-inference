@@ -77,8 +77,16 @@ BMG_ID
 `CER dataset`: 3248 households
 
 ### Train and Evaluate
+
+self tranining
 ```
-python main.py
+python train_self.py --dataset=SAVE --label_option=1
+```
+
+transfer learning
+```
+python select_features.py --dataset=SAVE --label_option=1
+python train_transfer.py --source_dataset=SAVE --target_datasetCER --label_option=1
 ```
 
 Methodology
